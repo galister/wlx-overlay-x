@@ -1,0 +1,31 @@
+[package]
+name = "wlxr_overlay"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "WlXrOverlay"
+path = "src/main.rs"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ashpd = "0.4.0"
+glam = "0.23.0"
+gles31 = "1.0.1"
+libspa-sys = "0.6.0"
+once_cell = "1.18.0"
+pipewire = { version = "0.6.0", features = ["v0_3_33"] }
+smithay-client-toolkit = "0.17.0"
+wayland-client = "0.30.2"
+wayland-protocols = { version = "0.30.1", features = ["wayland-client", "client", "staging", "unstable"] }
+tokio = { version = "1.27.0", features = ["rt", "rt-multi-thread", "signal", "full"] }
+tracing = "0.1.37"
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+async-std = { version = "1.12.0", features = ["attributes"] }
+libloading = "0.8.0"
+
+[dependencies.stereokit]
+default-features = false
+features = ["linux-egl"]
+version = "0.16.9"
+
