@@ -1,193 +1,29 @@
-use std::{
-    ffi::c_void,
-    mem::size_of,
-    ptr::null,
-    sync::atomic::{AtomicUsize, Ordering},
-};
-
-use libloading::{Library, Symbol};
+use std::{mem::size_of, ptr::null};
 
 use glam::Vec3;
 use gles31::{
     glActiveTexture, glAttachShader, glBindBuffer, glBindFramebuffer, glBindTexture,
-    glBindVertexArray, glBlendEquationSeparate, glBlendFuncSeparate, glBufferData,
+    glBindVertexArray, glBlendEquationSeparate, glBlendFunc, glBlendFuncSeparate, glBufferData,
     glCheckFramebufferStatus, glClear, glColorMask, glCompileShader, glCreateProgram,
     glCreateShader, glDeleteBuffers, glDeleteFramebuffers, glDeleteProgram, glDeleteShader,
     glDeleteTextures, glDeleteVertexArrays, glDetachShader, glDrawArrays, glDrawBuffers,
     glDrawElements, glEnableVertexAttribArray, glFramebufferTexture2D, glGenBuffers,
-    glGenFramebuffers, glGenTextures, glGenVertexArrays, glGetError, glGetShaderiv,
-    glGetUniformLocation, glLinkProgram, glShaderSource, glTexImage2D, glTexParameteri,
-    glUniform1ui, glUniform4f, glUseProgram, glVertexAttribPointer, glViewport, load_gl_functions,
+    glGenFramebuffers, glGenTextures, glGenVertexArrays, glGetError, glGetShaderInfoLog,
+    glGetShaderiv, glGetUniformLocation, glLinkProgram, glShaderSource, glTexImage2D,
+    glTexParameteri, glUniform1i, glUniform4f, glUseProgram, glVertexAttribPointer, glViewport,
     GL_ARRAY_BUFFER, GL_CLAMP_TO_EDGE, GL_COLOR_ATTACHMENT0, GL_COLOR_BUFFER_BIT,
-    GL_COMPILE_STATUS, GL_ELEMENT_ARRAY_BUFFER, GL_FALSE, GL_FLOAT, GL_FRAGMENT_SHADER,
-    GL_FRAMEBUFFER, GL_FRAMEBUFFER_COMPLETE, GL_FUNC_ADD, GL_LINEAR, GL_NO_ERROR, GL_ONE,
-    GL_ONE_MINUS_SRC_ALPHA, GL_RGBA8, GL_SRC_ALPHA, GL_SRGB8_ALPHA8, GL_STATIC_DRAW, GL_TEXTURE_2D,
+    GL_COMPILE_STATUS, GL_DRAW_FRAMEBUFFER, GL_ELEMENT_ARRAY_BUFFER, GL_FALSE, GL_FLOAT,
+    GL_FRAGMENT_SHADER, GL_FRAMEBUFFER_COMPLETE, GL_FUNC_ADD, GL_INFO_LOG_LENGTH, GL_LINEAR,
+    GL_NO_ERROR, GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_PIXEL_PACK_BUFFER, GL_PIXEL_UNPACK_BUFFER,
+    GL_RGBA, GL_SRC_ALPHA, GL_SRGB8_ALPHA8, GL_STATIC_DRAW, GL_TEXTURE0, GL_TEXTURE_2D,
     GL_TEXTURE_MAG_FILTER, GL_TEXTURE_MIN_FILTER, GL_TEXTURE_WRAP_S, GL_TEXTURE_WRAP_T,
-    GL_TRIANGLES, GL_TRIANGLE_STRIP, GL_UNSIGNED_BYTE, GL_UNSIGNED_INT, GL_VERTEX_SHADER,
+    GL_TRIANGLES, GL_TRIANGLE_STRIP, GL_UNSIGNED_BYTE, GL_UNSIGNED_INT, GL_VERTEX_SHADER, GL_ZERO,
 };
-use stereokit::StereoKitMultiThread;
+use stereokit::{SkDraw, StereoKitMultiThread};
 
-static EGL_CONTEXT: AtomicUsize = AtomicUsize::new(0);
-static EGL_DISPLAY: AtomicUsize = AtomicUsize::new(0);
-
-type EGLenum = i32;
-type EGLImage = *const c_void;
-
-const EGL_TEXTURE_2D: EGLenum = 0x305F;
-
-#[allow(non_upper_case_globals)]
-static glEGLImageTargetTexture2DOES_p: AtomicUsize = AtomicUsize::new(0);
-
-#[inline]
-#[allow(non_snake_case)]
-pub fn glEGLImageTargetTexture2DOES(target: i32, egl_image: EGLImage) -> () {
-    let u = glEGLImageTargetTexture2DOES_p.load(Ordering::Relaxed);
-    debug_assert_ne!(u, 0);
-    unsafe {
-        let _func_p: unsafe extern "C" fn(i32, *const c_void) -> () = core::mem::transmute(u);
-        _func_p(target, egl_image)
-    }
-}
-
-#[allow(non_upper_case_globals)]
-static glCopyImageSubData_p: AtomicUsize = AtomicUsize::new(0);
-
-#[inline]
-#[allow(non_snake_case)]
-pub fn glCopyImageSubData(
-    src: u32,
-    s_target: u32,
-    s_level: i32,
-    s_x: i32,
-    s_y: i32,
-    s_z: i32,
-    dst: u32,
-    d_target: u32,
-    d_level: i32,
-    d_x: i32,
-    d_y: i32,
-    d_z: i32,
-    s_width: i32,
-    s_height: i32,
-    s_depth: i32,
-) -> () {
-    let u = glCopyImageSubData_p.load(Ordering::Relaxed);
-    debug_assert_ne!(u, 0);
-    unsafe {
-        let _func_p: unsafe extern "C" fn(
-            u32,
-            u32,
-            i32,
-            i32,
-            i32,
-            i32,
-            u32,
-            u32,
-            i32,
-            i32,
-            i32,
-            i32,
-            i32,
-            i32,
-            i32,
-        ) -> () = core::mem::transmute(u);
-        _func_p(
-            src, s_target, s_level, s_x, s_y, s_z, dst, d_target, d_level, d_x, d_y, d_z, s_width,
-            s_height, s_depth,
-        );
-    }
-}
-
-#[allow(non_upper_case_globals)]
-static eglCreateImage_p: AtomicUsize = AtomicUsize::new(0);
-
-#[inline]
-#[allow(non_snake_case)]
-pub fn eglCreateImage(
-    target: EGLenum,
-    buffer: *const c_void,
-    attrib_list: *const c_void,
-) -> *const c_void {
-    let u = eglCreateImage_p.load(Ordering::Relaxed);
-    let d = EGL_DISPLAY.load(Ordering::Relaxed);
-    let c = EGL_CONTEXT.load(Ordering::Relaxed);
-    debug_assert_ne!(u, 0);
-    debug_assert_ne!(d, 0);
-    debug_assert_ne!(c, 0);
-    unsafe {
-        let _func_p: unsafe extern "C" fn(
-            *const c_void,
-            *const c_void,
-            EGLenum,
-            *const c_void,
-            *const c_void,
-        ) -> EGLImage = core::mem::transmute(u);
-        _func_p(d as _, c as _, target, buffer, attrib_list)
-    }
-}
-
-#[allow(non_upper_case_globals)]
-static eglDestroyImage_p: AtomicUsize = AtomicUsize::new(0);
-
-#[inline]
-#[allow(non_snake_case)]
-pub fn eglDestroyImage(egl_image: EGLImage) -> i32 {
-    let u = eglDestroyImage_p.load(Ordering::Relaxed);
-    let d = EGL_DISPLAY.load(Ordering::Relaxed);
-    debug_assert_ne!(u, 0);
-    debug_assert_ne!(d, 0);
-    unsafe {
-        let _func_p: unsafe extern "C" fn(*const c_void, *const c_void) -> i32 =
-            core::mem::transmute(u);
-        _func_p(d as _, egl_image)
-    }
-}
-
-pub fn gl_init(sk: &stereokit::SkSingle) {
-    unsafe {
-        let lib = Library::new("libEGL.so.1").expect("Unable to load libEGL.so.1");
-
-        let proc_fn: Symbol<unsafe extern "C" fn(*const u8) -> *const c_void> = lib
-            .get(b"eglGetProcAddress")
-            .expect("Unable to load eglGetProcAddress");
-
-        let wrap = |name: *const u8| proc_fn(name);
-
-        load_gl_functions(&wrap).expect("Failed to load GL functions.");
-
-        let p0 = proc_fn(b"glEGLImageTargetTexture2DOES".as_ptr());
-        glEGLImageTargetTexture2DOES_p.store(p0 as usize, std::sync::atomic::Ordering::Relaxed);
-        debug_assert_ne!(p0, 0 as _);
-
-        let p1 = proc_fn(b"glCopyImageSubData".as_ptr());
-        glCopyImageSubData_p.store(p1 as usize, std::sync::atomic::Ordering::Relaxed);
-        debug_assert_ne!(p1, 0 as _);
-
-        let egl_context = sk.backend_opengl_egl_get_context();
-        EGL_CONTEXT.store(egl_context as _, Ordering::Relaxed);
-
-        let egl_display = sk.backend_opengl_egl_get_display();
-        EGL_DISPLAY.store(egl_display as _, Ordering::Relaxed);
-
-        let create_fn: Symbol<
-            unsafe extern "C" fn(
-                *const c_void,
-                *const c_void,
-                EGLenum,
-                *const c_void,
-                *const c_void,
-            ) -> *const c_void,
-        > = lib
-            .get(b"eglCreateImage")
-            .expect("Unable to load eglCreateImage");
-        eglCreateImage_p.store(create_fn.into_raw().into_raw() as _, Ordering::Relaxed);
-
-        let destroy_fn: Symbol<unsafe extern "C" fn(*const c_void, *const c_void) -> i32> = lib
-            .get(b"eglDestroyImage")
-            .expect("Unable to load eglDestroyImage");
-        eglDestroyImage_p.store(destroy_fn.into_raw().into_raw() as _, Ordering::Relaxed);
-    }
-}
+pub mod dmabuf;
+pub mod egl;
+pub mod memfd;
 
 // --- GlTexture ---
 
@@ -197,11 +33,10 @@ pub struct GlTexture {
     pub height: u32,
     pub format: i32,
     pub target: u32,
-    pub framebuffer: Option<GlFramebuffer>,
 }
 
 impl GlTexture {
-    pub fn new(width: u32, height: u32) -> GlTexture {
+    pub fn new() -> GlTexture {
         let mut handle: u32 = 0;
 
         unsafe {
@@ -211,11 +46,10 @@ impl GlTexture {
 
         let tex = GlTexture {
             handle,
-            width,
-            height,
+            width: 0,
+            height: 0,
             format: GL_SRGB8_ALPHA8 as i32,
             target: GL_TEXTURE_2D,
-            framebuffer: None,
         };
 
         unsafe {
@@ -232,12 +66,32 @@ impl GlTexture {
         tex
     }
 
-    pub fn allocate(&mut self, width: u32, height: u32, format: i32) {
+    pub fn from_handle(handle: u32, width: u32, height: u32) -> GlTexture {
+        GlTexture {
+            handle,
+            width,
+            height,
+            format: GL_SRGB8_ALPHA8 as i32,
+            target: GL_TEXTURE_2D,
+        }
+    }
+
+    pub fn allocate_empty(&mut self, width: u32, height: u32, format: i32) {
+        self.allocate(width, height, format, std::ptr::null());
+    }
+
+    pub fn allocate(&mut self, width: u32, height: u32, format: i32, data: *const u8) {
         self.width = width;
         self.height = height;
         self.format = format;
 
         unsafe {
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+            debug_assert_eq!(glGetError(), GL_NO_ERROR);
+
+            glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+            debug_assert_eq!(glGetError(), GL_NO_ERROR);
+
             glTexImage2D(
                 self.target,
                 0,
@@ -245,17 +99,17 @@ impl GlTexture {
                 width,
                 height,
                 0,
-                GL_RGBA8,
+                GL_RGBA,
                 GL_UNSIGNED_BYTE,
-                std::ptr::null_mut(),
+                data as _,
             );
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
         }
     }
 
-    pub fn bind(&self) {
+    pub fn bind(&self, slot: u32) {
         unsafe {
-            glActiveTexture(self.handle);
+            glActiveTexture(GL_TEXTURE0 + slot);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
             glBindTexture(self.target, self.handle);
@@ -268,23 +122,13 @@ impl GlTexture {
             return;
         }
 
-        self.allocate(width, height, self.format);
-    }
-
-    pub fn load_egl_image(&mut self, egl_image: EGLImage, width: u32, height: u32) {
-        self.bind();
-
-        unsafe {
-            glEGLImageTargetTexture2DOES(GL_TEXTURE_2D as _, egl_image);
-            debug_assert_eq!(glGetError(), GL_NO_ERROR);
-        }
-        self.width = width;
-        self.height = height;
+        self.allocate_empty(width, height, self.format);
     }
 }
 
 impl Drop for GlTexture {
     fn drop(&mut self) {
+        println!("[GL] Delete texture {}", self.handle);
         unsafe {
             glDeleteTextures(1, &self.handle);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
@@ -297,7 +141,7 @@ impl Drop for GlTexture {
 const UNIFORM_TEX0: usize = 0;
 const UNIFORM_COL0: usize = 1;
 
-const UNIFORM_NAMES: [&str; 2] = ["uTexture0", "uColor"];
+const UNIFORM_NAMES: [&str; 2] = ["uTexture0\0", "uColor\0"];
 
 pub struct GlShader {
     pub handle: u32,
@@ -333,7 +177,7 @@ impl GlShader {
 
             GlShader {
                 handle: program,
-                locations: vec![],
+                locations: vec![-1, -1],
             }
         }
     }
@@ -343,7 +187,12 @@ impl GlShader {
             let shader = glCreateShader(shader_type);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
-            glShaderSource(shader, 1, src.as_ptr() as _, &(src.len() as i32) as _);
+            glShaderSource(
+                shader,
+                1,
+                &src.as_ptr() as *const *const u8 as *const *const _,
+                &(src.len() as i32) as *const _,
+            );
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
             glCompileShader(shader);
@@ -351,8 +200,20 @@ impl GlShader {
 
             let mut status = 0i32;
             glGetShaderiv(shader, GL_COMPILE_STATUS, &mut status);
-            debug_assert_ne!(status, GL_FALSE as _);
+            if status == GL_FALSE as _ {
+                let mut max_len = 0;
+                glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &mut max_len as *mut _);
 
+                let mut error = Vec::with_capacity(max_len as usize);
+                let mut len = 0u32;
+                glGetShaderInfoLog(shader, max_len as _, &mut len, error.as_mut_ptr() as *mut _);
+                error.set_len(len as usize);
+
+                panic!(
+                    "[GL] {}",
+                    std::str::from_utf8(&error).unwrap_or("<Error Message no utf8>")
+                );
+            }
             shader
         }
     }
@@ -364,7 +225,7 @@ impl GlShader {
         }
     }
 
-    pub fn map_uniform(&mut self, uniform: usize) {
+    pub fn has_uniform(&mut self, uniform: usize) {
         unsafe {
             let name = UNIFORM_NAMES[uniform];
             let location = glGetUniformLocation(self.handle, name.as_ptr());
@@ -377,6 +238,7 @@ impl GlShader {
 
 impl Drop for GlShader {
     fn drop(&mut self) {
+        println!("[GL] Delete program {}", self.handle);
         unsafe { glDeleteProgram(self.handle) };
     }
 }
@@ -385,11 +247,10 @@ impl Drop for GlShader {
 
 pub struct GlFramebuffer {
     pub handle: u32,
-    pub texture: u32,
 }
 
 impl GlFramebuffer {
-    pub fn new(texture_handle: u32) -> GlFramebuffer {
+    pub fn new() -> GlFramebuffer {
         let mut handle = 0u32;
 
         unsafe {
@@ -397,22 +258,19 @@ impl GlFramebuffer {
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
         }
 
-        GlFramebuffer {
-            handle,
-            texture: texture_handle,
-        }
+        GlFramebuffer { handle }
     }
 
-    pub fn bind(&self) {
+    pub fn bind(&self, texture: u32) {
         unsafe {
-            glBindFramebuffer(GL_FRAMEBUFFER, self.handle);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, self.handle);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
             glFramebufferTexture2D(
-                GL_FRAMEBUFFER,
+                GL_DRAW_FRAMEBUFFER,
                 GL_COLOR_ATTACHMENT0,
                 GL_TEXTURE_2D,
-                self.texture,
+                texture,
                 0,
             );
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
@@ -420,7 +278,7 @@ impl GlFramebuffer {
             glDrawBuffers(1, &GL_COLOR_ATTACHMENT0);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
-            let status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            let status = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
             debug_assert_eq!(status, GL_FRAMEBUFFER_COMPLETE);
         }
     }
@@ -428,6 +286,7 @@ impl GlFramebuffer {
 
 impl Drop for GlFramebuffer {
     fn drop(&mut self) {
+        println!("[GL] Delete framebuffer {}", self.handle);
         unsafe {
             glDeleteFramebuffers(1, &self.handle);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
@@ -487,6 +346,7 @@ impl GlBuffer {
 
 impl Drop for GlBuffer {
     fn drop(&mut self) {
+        println!("[GL] Delete buffer {}", self.handle);
         unsafe {
             glDeleteBuffers(1, &self.handle);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
@@ -561,6 +421,7 @@ impl GlVertexArray {
 
 impl Drop for GlVertexArray {
     fn drop(&mut self) {
+        println!("[GL] Delete vertex array {}", self.handle);
         unsafe {
             glDeleteVertexArrays(1, &self.handle);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
@@ -576,15 +437,16 @@ const FRAG_SPRITE: &str = include_str!("shaders/sprite.frag");
 const FRAG_GLYPH: &str = include_str!("shaders/glyph.frag");
 const FRAG_SRGB: &str = include_str!("shaders/srgb.frag");
 
-struct GlRenderer {
+pub struct GlRenderer {
     vao: GlVertexArray,
+    framebuffer: GlFramebuffer,
     vertices: Vec<f32>,
     indices: Vec<u32>,
     shader_sprite: GlShader,
     shader_glyph: GlShader,
     shader_color: GlShader,
-    width: f32,
-    height: f32,
+    width: u32,
+    height: u32,
 }
 
 impl GlRenderer {
@@ -592,11 +454,16 @@ impl GlRenderer {
         let vbo = GlBuffer::new(GL_ARRAY_BUFFER);
         let ebo = GlBuffer::new(GL_ELEMENT_ARRAY_BUFFER);
 
+        #[rustfmt::skip]
         let vertices: Vec<f32> = vec![
-            0.5, 0.5, 1., 0., 0.5, -0.5, 1., 1., -0.5, -0.5, 0., 1., -0.5, 0.5, 0., 0.,
-        ];
+        //  X   Y    U   V
+            0., 0.,  0., 0.,
+            0., 1.,  0., 1.,
+            1., 0.,  1., 0.,
+            1., 1.,  1., 1.,
+       ];
 
-        let indices: Vec<u32> = vec![0, 1, 3, 1, 2, 3];
+        let indices: Vec<u32> = vec![2, 1, 0, 1, 2, 3];
 
         vbo.data(&vertices);
         ebo.data(&indices);
@@ -606,32 +473,49 @@ impl GlRenderer {
         vao.vert_attrib_ptr::<f32>(0, 2, GL_FLOAT, 4, 0);
         vao.vert_attrib_ptr::<f32>(1, 2, GL_FLOAT, 4, 2);
 
-        let shader_sprite = GlShader::new(VERT_COMMON, FRAG_SPRITE);
-        let shader_glyph = GlShader::new(VERT_COMMON, FRAG_GLYPH);
-        let shader_color = GlShader::new(VERT_COMMON, FRAG_COLOR);
+        let mut shader_sprite = GlShader::new(VERT_COMMON, FRAG_SPRITE);
+        shader_sprite.has_uniform(UNIFORM_TEX0);
+
+        let mut shader_glyph = GlShader::new(VERT_COMMON, FRAG_GLYPH);
+        shader_glyph.has_uniform(UNIFORM_TEX0);
+        shader_glyph.has_uniform(UNIFORM_COL0);
+
+        let mut shader_color = GlShader::new(VERT_COMMON, FRAG_COLOR);
+        shader_color.has_uniform(UNIFORM_COL0);
 
         GlRenderer {
             vao,
+            framebuffer: GlFramebuffer::new(),
             vertices,
             indices,
             shader_sprite,
             shader_glyph,
             shader_color,
-            width: 0.,
-            height: 0.,
+            width: 0,
+            height: 0,
         }
     }
 
-    pub fn begin(&mut self, texture: &GlTexture) {
-        self.width = texture.width as f32;
-        self.height = texture.height as f32;
+    pub fn begin_sk(&mut self, sk: &SkDraw, tex: &stereokit::Tex) {
+        self.width = sk.tex_get_width(tex) as _;
+        self.height = sk.tex_get_height(tex) as _;
 
-        if let Some(fb) = &texture.framebuffer {
-            fb.bind();
-        }
+        let texture = unsafe { sk.tex_get_surface(&tex) as usize as u32 };
+        self.framebuffer.bind(texture);
+        self.begin();
+    }
 
+    pub fn begin_gl(&mut self, texture: GlTexture) {
+        self.width = texture.width;
+        self.height = texture.height;
+
+        self.framebuffer.bind(texture.handle);
+        self.begin();
+    }
+
+    fn begin(&mut self) {
         unsafe {
-            glViewport(0, 0, texture.width, texture.height);
+            glViewport(0, 0, self.width as _, self.height as _);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
             glBlendFuncSeparate(
@@ -645,27 +529,32 @@ impl GlRenderer {
             glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
-            glColorMask(1, 1, 1, 1);
+            glColorMask(1, 1, 1, 0);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
         }
     }
 
     fn use_rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
-        let x2 = x / self.width;
-        let y2 = y / self.height;
+        let rw = self.width as f32;
+        let rh = self.height as f32;
 
-        self.vertices[8] = x2;
-        self.vertices[12] = x2;
-        self.vertices[5] = y2;
-        self.vertices[9] = y2;
+        let x0 = x / rw;
+        let y0 = y / rh;
 
-        let w2 = (x + w) / self.width;
-        let h2 = (y + h) / self.height;
+        let x1 = w / rw + x0;
+        let y1 = h / rh + y0;
 
-        self.vertices[0] = w2;
-        self.vertices[4] = w2;
-        self.vertices[1] = h2;
-        self.vertices[13] = h2;
+        self.vertices[0] = x0;
+        self.vertices[4] = x0;
+
+        self.vertices[8] = x1;
+        self.vertices[12] = x1;
+
+        self.vertices[1] = y0;
+        self.vertices[9] = y0;
+
+        self.vertices[5] = y1;
+        self.vertices[13] = y1;
 
         self.vao.vbo.data(&self.vertices);
     }
@@ -675,11 +564,13 @@ impl GlRenderer {
 
         self.vao.bind();
         self.shader_sprite.use_shader();
-        texture.bind();
+        texture.bind(0);
 
         let location = self.shader_sprite.locations[UNIFORM_TEX0];
+        debug_assert_ne!(location, -1);
         unsafe {
-            glUniform1ui(location, 0);
+            glBlendFunc(GL_ONE, GL_ZERO);
+            glUniform1i(location, 0);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -724,7 +615,8 @@ impl GlRenderer {
     pub fn end(&mut self) {
         self.vao.unbind();
         unsafe {
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+            self.vao.unbind();
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
         }
     }

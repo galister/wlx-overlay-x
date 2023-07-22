@@ -1,11 +1,10 @@
 pub mod pw_capture;
-pub mod wlr_capture;
+pub mod wlr_dmabuf_capture;
+pub mod wlr_screencopy_capture;
 
-use crate::gl::GlTexture;
-
-trait DesktopCapture {
-    fn init();
-    fn pause();
-    fn resume();
-    fn render(texture: &GlTexture);
+pub trait DesktopCapture {
+    fn init(&mut self);
+    fn pause(&mut self);
+    fn resume(&mut self);
+    fn render(&mut self, texture: u32);
 }

@@ -1,8 +1,11 @@
 use glam::Affine3A;
-use stereokit::Color128;
+use stereokit::{Color128, SkDraw};
 
 pub trait Overlay {
     fn overlay(&self) -> &OverlayData;
+    fn overlay_mut(&mut self) -> &mut OverlayData;
+
+    fn show(&mut self, sk: &SkDraw);
 }
 
 pub struct OverlayData {
