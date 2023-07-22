@@ -1,6 +1,7 @@
 use libc::{ftruncate, shm_open, shm_unlink};
 use libc::{O_CREAT, O_RDWR, S_IRUSR, S_IWUSR};
 use std::os::fd::{FromRawFd, OwnedFd};
+use std::sync::Mutex;
 use std::{cell::RefCell, os::fd::AsRawFd, rc::Rc, sync::Arc};
 use wayland_client::protocol::wl_buffer::WlBuffer;
 
@@ -31,11 +32,9 @@ use wayland_client::{
     Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum,
 };
 
-use crate::gl::dmabuf::FRAME_FAILED;
-use crate::gl::{
-    dmabuf::{DmabufFrame, DmabufPlane, FRAME_PENDING, FRAME_READY},
-    memfd::MemFdFrame,
-};
+use crate::desktop::frame::{FramePlane, FRAME_FAILED};
+
+use super::frame::{DmabufFrame, MemFdFrame, FRAME_PENDING, FRAME_READY};
 
 pub struct OutputState {
     pub wl_output: WlOutput,
@@ -59,8 +58,6 @@ pub struct WlClientState {
     pub desktop_rect: (i32, i32),
     pub queue: Rc<RefCell<EventQueue<Self>>>,
     pub queue_handle: QueueHandle<Self>,
-    pub frame: DmabufFrame,
-    pub memfd_frame: MemFdFrame,
 }
 
 impl WlClientState {
@@ -81,8 +78,6 @@ impl WlClientState {
             desktop_rect: (0, 0),
             queue: Rc::new(RefCell::new(queue)),
             queue_handle: qh.clone(),
-            frame: Default::default(),
-            memfd_frame: Default::default(),
         };
 
         for o in globals.contents().clone_list().iter() {
@@ -112,35 +107,43 @@ impl WlClientState {
         state
     }
 
-    pub fn request_dmabuf_frame(&mut self, output_idx: usize) {
+    pub fn request_dmabuf_frame(&mut self, output_idx: usize) -> Option<Arc<Mutex<DmabufFrame>>> {
+        let data = Arc::new(Mutex::new(DmabufFrame::new()));
+
         if let Some(dmabuf_manager) = self.maybe_wlr_dmabuf_mgr.as_ref() {
-            let frame = dmabuf_manager.capture_output(
+            let _ = dmabuf_manager.capture_output(
                 1,
                 &self.outputs[output_idx].wl_output,
                 &self.queue_handle,
-                (),
+                data.clone(),
             );
 
             self.dispatch();
 
-            frame.destroy();
+            return Some(data);
         }
+        None
     }
 
-    pub fn request_screencopy_frame(&mut self, output_idx: usize) {
-        if let Some(screencopy_manager) = self.maybe_wlr_screencopy_mgr.as_ref()
-        {
-            let frame = screencopy_manager.capture_output(
+    pub fn request_screencopy_frame(&mut self, output_idx: usize) -> Option<Arc<Mutex<MemFdFrame>>> {
+
+        let output_name = &self.outputs[output_idx].name;
+        let data = Arc::new(Mutex::new(MemFdFrame::new(output_name.to_string())));
+
+        if let Some(screencopy_manager) = self.maybe_wlr_screencopy_mgr.as_ref() {
+            let _ = screencopy_manager.capture_output(
                 1,
                 &self.outputs[output_idx].wl_output,
                 &self.queue_handle,
-                (),
+                data.clone(),
             );
 
             self.dispatch();
+            self.dispatch();
 
-            frame.destroy();
+            return Some(data);
         }
+        None
     }
 
     pub fn dispatch(&mut self) {
@@ -213,12 +216,12 @@ impl Dispatch<WlOutput, u32> for WlClientState {
     }
 }
 
-impl Dispatch<ZwlrExportDmabufFrameV1, ()> for WlClientState {
+impl Dispatch<ZwlrExportDmabufFrameV1, Arc<Mutex<DmabufFrame>>> for WlClientState {
     fn event(
-        state: &mut Self,
+        _state: &mut Self,
         _proxy: &ZwlrExportDmabufFrameV1,
         event: <ZwlrExportDmabufFrameV1 as Proxy>::Event,
-        _data: &(),
+        data: &Arc<Mutex<DmabufFrame>>,
         _conn: &Connection,
         _qhandle: &QueueHandle<Self>,
     ) {
@@ -232,17 +235,18 @@ impl Dispatch<ZwlrExportDmabufFrameV1, ()> for WlClientState {
                 num_objects,
                 ..
             } => {
-                if state.frame.status != FRAME_PENDING {
-                    println!("[Wayland]: Frame event while frame is not pending!");
-                    return;
-                }
+                if let Ok(mut data) = data.lock() {
+                    if data.status != FRAME_PENDING {
+                        println!("[Wayland]: Frame event while frame is not pending!");
+                        return;
+                    }
 
-                println!("Format: {:X}", format);
-                state.frame.format.width = width;
-                state.frame.format.height = height;
-                state.frame.format.format = format;
-                state.frame.format.set_mod(mod_high, mod_low);
-                state.frame.num_planes = num_objects as _;
+                    data.fmt.w = width;
+                    data.fmt.h = height;
+                    data.fmt.format = format;
+                    data.fmt.set_mod(mod_high, mod_low);
+                    data.num_planes = num_objects as _;
+                }
             }
             zwlr_export_dmabuf_frame_v1::Event::Object {
                 index,
@@ -250,42 +254,48 @@ impl Dispatch<ZwlrExportDmabufFrameV1, ()> for WlClientState {
                 offset,
                 stride,
                 ..
-            } => {
-                if state.frame.status != FRAME_PENDING {
-                    println!("[Wayland]: Object event while frame is not pending!");
-                    return;
-                }
+        } => {
+                if let Ok(mut data) = data.lock() {
+                    if data.status != FRAME_PENDING {
+                        println!("[Wayland]: Object event while frame is not pending!");
+                        return;
+                    }
 
-                println!("Object {} has fd {}", index, fd.as_raw_fd());
+                    println!("Object {} has fd {}", index, fd.as_raw_fd());
 
-                state.frame.planes[index as usize] = DmabufPlane {
-                    fd,
-                    offset,
-                    stride: stride as _,
+                    data.planes[index as usize] = FramePlane {
+                        fd,
+                        offset,
+                        stride: stride as _,
+                    }
                 }
             }
             zwlr_export_dmabuf_frame_v1::Event::Ready { .. } => {
-                if state.frame.status != FRAME_PENDING {
-                    println!("[Wayland]: Ready event while frame is not pending!");
-                    return;
+                if let Ok(mut data) = data.lock() {
+                    if data.status != FRAME_PENDING {
+                        println!("[Wayland]: Ready event while frame is not pending!");
+                        return;
+                    }
+                    data.status = FRAME_READY;
                 }
-                state.frame.status = FRAME_READY;
             }
             zwlr_export_dmabuf_frame_v1::Event::Cancel { .. } => {
-                println!("[Wayland]: Frame capture failed.");
-                state.frame.status = FRAME_FAILED;
+                if let Ok(mut data) = data.lock() {
+                    println!("[Wayland]: Frame capture failed.");
+                    data.status = FRAME_FAILED;
+                }
             }
             _ => {}
         }
     }
 }
 
-impl Dispatch<ZwlrScreencopyFrameV1, ()> for WlClientState {
+impl Dispatch<ZwlrScreencopyFrameV1, Arc<Mutex<MemFdFrame>>> for WlClientState {
     fn event(
         state: &mut Self,
         proxy: &ZwlrScreencopyFrameV1,
         event: <ZwlrScreencopyFrameV1 as Proxy>::Event,
-        _data: &(),
+        data: &Arc<Mutex<MemFdFrame>>,
         _conn: &Connection,
         qhandle: &QueueHandle<Self>,
     ) {
@@ -296,60 +306,60 @@ impl Dispatch<ZwlrScreencopyFrameV1, ()> for WlClientState {
                 height,
                 stride,
             } => {
-                if state.memfd_frame.status != FRAME_PENDING {
-                    println!("[Wayland]: Buffer event while frame is not pending!");
-                    return;
-                }
-                if let Ok(format) = format.into_result() {
-                    state.memfd_frame.width = width;
-                    state.memfd_frame.height = height;
-                    state.memfd_frame.stride = stride;
-                    state.memfd_frame.format = format;
-                    state.memfd_frame.size = (stride * height) as _;
-                }
-            }
-            zwlr_screencopy_frame_v1::Event::LinuxDmabuf { .. } => {}
-            zwlr_screencopy_frame_v1::Event::BufferDone => {
-                if state.memfd_frame.status != FRAME_PENDING {
-                    println!("[Wayland]: BufferDone event while frame is not pending!");
-                    return;
-                }
-                let shm = state.maybe_shm.as_ref().unwrap();
-                let f = &mut state.memfd_frame;
+                if let Ok(mut data) = data.lock() {
+                    println!("Buffer: {}", &data.path);
+                    if data.status != FRAME_PENDING {
+                        println!("[Wayland]: Buffer event while frame is not pending!");
+                        return;
+                    }
+                    if let Ok(format) = format.into_result() {
+                        data.fmt.w = width;
+                        data.fmt.h = height;
+                        data.plane.stride = stride as _;
+                        data.format = format;
+                        data.fmt.size = (stride * height) as _;
+                    }
 
-                unsafe {
-                    let fd = shm_open(
-                        f.shm_path.as_ptr() as _,
-                        O_CREAT | O_RDWR,
-                        S_IRUSR | S_IWUSR,
-                    );
-                    shm_unlink(f.shm_path.as_ptr() as _);
-                    ftruncate(fd, f.size as _);
+                    let shm = state.maybe_shm.as_ref().unwrap();
+                    unsafe {
+                        let fd = shm_open(data.path.as_ptr() as _, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+                        shm_unlink(data.path.as_ptr() as _);
+                        ftruncate(fd, data.fmt.size as _);
 
-                    f.pool = shm.create_pool(fd, f.size as _, qhandle, ());
-                    f.buffer = f.pool.create_buffer(
-                        0,
-                        f.width as _,
-                        f.height as _,
-                        f.stride as _,
-                        f.format,
-                        qhandle,
-                        (),
-                    );
-                    f.fd = OwnedFd::from_raw_fd(fd);
+                        let pool = shm.create_pool(fd, data.fmt.size as _, qhandle, ());
+                        data.plane.fd = OwnedFd::from_raw_fd(fd);
+
+                        let buffer = pool.create_buffer(
+                            0,
+                            data.fmt.w as _,
+                            data.fmt.h as _,
+                            data.plane.stride as _,
+                            data.format,
+                            qhandle,
+                            (),
+                        );
+                        proxy.copy(&buffer);
+
+                        data.buffer = Some(buffer);
+                        data.pool = Some(pool);
+                    }
                 }
-                proxy.copy(&state.memfd_frame.buffer);
             }
             zwlr_screencopy_frame_v1::Event::Ready { .. } => {
-                if state.memfd_frame.status != FRAME_PENDING {
-                    println!("[Wayland]: Ready event while frame is not pending!");
-                    return;
+                println!("Ready");
+                if let Ok(mut data) = data.lock() {
+                    if data.status != FRAME_PENDING {
+                        println!("[Wayland]: Ready event while frame is not pending!");
+                        return;
+                    }
+                    data.status = FRAME_READY;
                 }
-                state.memfd_frame.status = FRAME_READY;
             }
             zwlr_screencopy_frame_v1::Event::Failed => {
-                println!("[Wayland]: Frame capture failed.");
-                state.memfd_frame.status = FRAME_FAILED;
+                if let Ok(mut data) = data.lock() {
+                    println!("[Wayland]: Frame capture failed.");
+                    data.status = FRAME_FAILED;
+                }
             }
             _ => {}
         }

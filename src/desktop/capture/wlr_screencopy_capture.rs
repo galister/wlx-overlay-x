@@ -1,9 +1,8 @@
-use crate::{
-    desktop::wl_client::{OutputState, WlClientState},
-    gl::{
-        dmabuf::{FRAME_FAILED, FRAME_PENDING, FRAME_READY},
-        memfd::texture_load_memfd,
-    },
+use std::sync::{Mutex, Arc};
+
+use crate::desktop::{
+    frame::{texture_load_memfd, FRAME_PENDING, FRAME_READY, FRAME_FAILED, MemFdFrame},
+    wl_client::{OutputState, WlClientState},
 };
 
 use super::DesktopCapture;
@@ -11,6 +10,7 @@ use super::DesktopCapture;
 pub struct WlrScreencopyCapture {
     output_idx: usize,
     wl: WlClientState,
+    frame: Option<Arc<Mutex<MemFdFrame>>>
 }
 
 impl WlrScreencopyCapture {
@@ -24,7 +24,7 @@ impl WlrScreencopyCapture {
         }
         debug_assert_ne!(output_idx, 420420);
 
-        WlrScreencopyCapture { wl, output_idx }
+        WlrScreencopyCapture { wl, output_idx, frame: None }
     }
 }
 
@@ -33,21 +33,23 @@ impl DesktopCapture for WlrScreencopyCapture {
     fn pause(&mut self) {}
     fn resume(&mut self) {}
     fn render(&mut self, texture: u32) {
-        match self.wl.memfd_frame.status {
-            FRAME_PENDING => {
-                println!("[Dmabuf] Frame not ready to present");
-                return;
+        if let Some(mutex) = self.frame.as_ref() { 
+            if let Ok(frame) = mutex.lock() {
+                match frame.status {
+                    FRAME_PENDING => {
+                        println!("[Dmabuf] Frame not ready to present");
+                        return;
+                    }
+                    FRAME_FAILED => {
+                        println!("[Dmabuf] Frame capture failed");
+                    }
+                    FRAME_READY => {
+                        texture_load_memfd(texture, &frame);
+                    }
+                    _ => {}
+                }
             }
-            FRAME_FAILED => {
-                println!("[Dmabuf] Frame capture failed");
-            }
-            FRAME_READY => {
-                texture_load_memfd(texture, &self.wl.memfd_frame);
-            }
-            _ => {}
         }
-
-        self.wl.memfd_frame.status = FRAME_PENDING;
-        self.wl.request_screencopy_frame(self.output_idx);
+        self.frame = self.wl.request_screencopy_frame(self.output_idx);
     }
 }

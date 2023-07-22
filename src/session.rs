@@ -1,11 +1,15 @@
 use once_cell::sync::Lazy;
 use std::fs;
-use std::{path::Path, sync::Arc};
+use std::sync::Mutex;
+use std::path::Path;
 
-pub static SESSION: Lazy<Arc<WlXrSession>> = Lazy::new(|| Arc::new(WlXrSession::load()));
+pub static SESSION: Lazy<Mutex<WlXrSession>> = Lazy::new(|| Mutex::new(WlXrSession::load()));
 
 pub struct WlXrSession {
     pub config_path: String,
+    pub screen_flip_h: bool,
+    pub screen_flip_v: bool,
+    pub screen_invert_color: bool,
 }
 
 impl WlXrSession {
@@ -24,6 +28,6 @@ impl WlXrSession {
         }
         let _ = fs::create_dir(&config_path);
 
-        WlXrSession { config_path }
+        WlXrSession { config_path, screen_flip_h: false, screen_flip_v: false, screen_invert_color: false, }
     }
 }

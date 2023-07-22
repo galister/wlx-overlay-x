@@ -1,6 +1,6 @@
-use crate::{
-    desktop::wl_client::{OutputState, WlClientState},
-    gl::dmabuf::{texture_load_dmabuf, FRAME_FAILED, FRAME_PENDING, FRAME_READY},
+use crate::desktop::{
+    frame::{texture_load_dmabuf, FRAME_PENDING, FRAME_READY, FRAME_FAILED},
+    wl_client::{OutputState, WlClientState},
 };
 
 use super::DesktopCapture;
@@ -30,21 +30,22 @@ impl DesktopCapture for WlrDmabufCapture {
     fn pause(&mut self) {}
     fn resume(&mut self) {}
     fn render(&mut self, texture: u32) {
-        match self.wl.frame.status {
-            FRAME_PENDING => {
-                println!("[Dmabuf] Frame not ready to present");
-                return;
+        if let Some(mutex) = self.wl.request_dmabuf_frame(self.output_idx) {
+            if let Ok(frame) = mutex.lock() {
+                match frame.status {
+                    FRAME_PENDING => {
+                        println!("[Dmabuf] Frame not ready to present");
+                        return;
+                    }
+                    FRAME_FAILED => {
+                        println!("[Dmabuf] Frame capture failed");
+                    }
+                    FRAME_READY => {
+                        texture_load_dmabuf(texture, &frame);
+                    }
+                    _ => {}
+                }
             }
-            FRAME_FAILED => {
-                println!("[Dmabuf] Frame capture failed");
-            }
-            FRAME_READY => {
-                texture_load_dmabuf(texture, &self.wl.frame);
-            }
-            _ => {}
         }
-
-        self.wl.frame.status = FRAME_PENDING;
-        self.wl.request_dmabuf_frame(self.output_idx);
     }
 }

@@ -4,7 +4,7 @@ use std::os::fd::FromRawFd;
 use std::rc::Rc;
 use std::{cell::RefCell, os::fd::OwnedFd};
 
-use crate::gl::dmabuf::{DmabufFrameFormat, DmabufPlane, DrmFormat};
+use crate::desktop::frame::{DrmFormat, FrameFormat, FramePlane};
 
 use ashpd::{
     desktop::screencast::{CursorMode, PersistMode, Screencast, SourceType},
@@ -58,7 +58,7 @@ pub fn pipewire_init_stream<F>(
     on_frame: F,
 ) -> Result<(), Error>
 where
-    F: Fn(&DmabufFrameFormat, &Vec<DmabufPlane>) + 'static,
+    F: Fn(&FrameFormat, &Vec<FramePlane>) + 'static,
 {
     let main_loop = MainLoop::new()?;
     let context = Context::new(&main_loop)?;
@@ -67,7 +67,7 @@ where
     let stream: Rc<RefCell<Option<Stream<i32>>>> = Rc::new(RefCell::new(None));
     let stream_clone = stream.clone();
 
-    let format: Rc<RefCell<Option<DmabufFrameFormat>>> = Rc::new(RefCell::new(None));
+    let format: Rc<RefCell<Option<FrameFormat>>> = Rc::new(RefCell::new(None));
     let format_clone = format.clone();
 
     let stream_inner = Stream::<i32>::with_user_data(
@@ -92,11 +92,12 @@ where
 
         let info = unsafe { maybe_info.assume_init() };
 
-        let format = DmabufFrameFormat {
-            width: info.size.width,
-            height: info.size.height,
+        let format = FrameFormat {
+            w: info.size.width,
+            h: info.size.height,
             format: info.format,
             modifier: info.modifier,
+            size: 0, // TODO verify
         };
         format_clone.replace(Some(format));
 
@@ -121,9 +122,9 @@ where
             if datas.len() < 1 {
                 return;
             }
-            let planes: Vec<DmabufPlane> = datas
+            let planes: Vec<FramePlane> = datas
                 .iter()
-                .map(|p| DmabufPlane {
+                .map(|p| FramePlane {
                     fd: unsafe { OwnedFd::from_raw_fd(p.as_raw().fd as _) },
                     offset: p.chunk().offset(),
                     stride: p.chunk().stride(),
