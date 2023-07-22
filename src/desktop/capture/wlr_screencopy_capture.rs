@@ -33,6 +33,7 @@ impl DesktopCapture for WlrScreencopyCapture {
     fn pause(&mut self) {}
     fn resume(&mut self) {}
     fn render(&mut self, texture: u32) {
+        self.frame = self.wl.request_screencopy_frame(self.output_idx);
         if let Some(mutex) = self.frame.as_ref() { 
             if let Ok(frame) = mutex.lock() {
                 match frame.status {
@@ -50,6 +51,5 @@ impl DesktopCapture for WlrScreencopyCapture {
                 }
             }
         }
-        self.frame = self.wl.request_screencopy_frame(self.output_idx);
     }
 }

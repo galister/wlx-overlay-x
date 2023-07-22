@@ -1,6 +1,6 @@
 use libc::{ftruncate, shm_open, shm_unlink};
 use libc::{O_CREAT, O_RDWR, S_IRUSR, S_IWUSR};
-use std::os::fd::{FromRawFd, OwnedFd};
+use std::os::fd::{FromRawFd, OwnedFd, IntoRawFd};
 use std::sync::Mutex;
 use std::{cell::RefCell, os::fd::AsRawFd, rc::Rc, sync::Arc};
 use wayland_client::protocol::wl_buffer::WlBuffer;
@@ -264,7 +264,7 @@ impl Dispatch<ZwlrExportDmabufFrameV1, Arc<Mutex<DmabufFrame>>> for WlClientStat
                     println!("Object {} has fd {}", index, fd.as_raw_fd());
 
                     data.planes[index as usize] = FramePlane {
-                        fd,
+                        fd: fd.into_raw_fd(),
                         offset,
                         stride: stride as _,
                     }
@@ -327,7 +327,7 @@ impl Dispatch<ZwlrScreencopyFrameV1, Arc<Mutex<MemFdFrame>>> for WlClientState {
                         ftruncate(fd, data.fmt.size as _);
 
                         let pool = shm.create_pool(fd, data.fmt.size as _, qhandle, ());
-                        data.plane.fd = OwnedFd::from_raw_fd(fd);
+                        data.plane.fd = fd;
 
                         let buffer = pool.create_buffer(
                             0,

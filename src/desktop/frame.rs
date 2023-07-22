@@ -1,14 +1,14 @@
 use std::{
-    os::fd::{AsRawFd, OwnedFd},
+    os::fd::{AsRawFd, RawFd},
     mem::MaybeUninit,
-    ptr,
+    ptr, 
 };
 
 use gles31::{
     glBindBuffer, glBindTexture, glGetError, glPixelStorei, GL_NO_ERROR,
-    GL_PIXEL_UNPACK_BUFFER, GL_TEXTURE_2D, GL_UNPACK_ALIGNMENT, GL_UNSIGNED_BYTE, glTexImage2D,
+    GL_PIXEL_UNPACK_BUFFER, GL_TEXTURE_2D, GL_UNPACK_ALIGNMENT, GL_UNSIGNED_BYTE, glTexImage2D, glTexSubImage2D,
 };
-use libc::{mmap, munmap};
+use libc::{mmap, munmap, close};
 use wayland_client::protocol::{wl_buffer::WlBuffer, wl_shm::Format, wl_shm_pool::WlShmPool};
 
 use crate::gl::egl::{
@@ -55,7 +55,7 @@ impl FrameFormat {
 }
 
 pub struct FramePlane {
-    pub fd: OwnedFd,
+    pub fd: RawFd,
     pub offset: u32,
     pub stride: i32,
 }
@@ -145,14 +145,25 @@ const GL_BGRA8: u32 = 0x93A1;
 
 pub fn texture_load_memfd(texture: u32, f: &MemFdFrame) {
     unsafe {
+        let fd = f.plane.fd.as_raw_fd();
+        println!("{} @ {}x{} = {}", fd, f.fmt.w, f.fmt.h, f.fmt.size);
+
+        if fd == 0 {
+            return;
+        }
+
         let ptr = mmap(
             ptr::null_mut(),
             f.fmt.size,
             0x01,
             0x01,
-            f.plane.fd.as_raw_fd(),
+            fd,
             0,
         );
+
+        if ptr.is_null() {
+            return;
+        }
 
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
         debug_assert_eq!(glGetError(), GL_NO_ERROR);
@@ -163,10 +174,13 @@ pub fn texture_load_memfd(texture: u32, f: &MemFdFrame) {
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
         debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
+        //glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f.fmt.w, f.fmt.h, GL_BGRA, GL_UNSIGNED_BYTE, ptr);
+
         glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA8 as _, f.fmt.w, f.fmt.h, 0, GL_BGRA, GL_UNSIGNED_BYTE, ptr);
         debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
         munmap(ptr, f.fmt.size);
+        close(fd);
     }
 }
 

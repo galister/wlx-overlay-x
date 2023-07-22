@@ -125,7 +125,7 @@ where
             let planes: Vec<FramePlane> = datas
                 .iter()
                 .map(|p| FramePlane {
-                    fd: unsafe { OwnedFd::from_raw_fd(p.as_raw().fd as _) },
+                    fd: p.as_raw().fd as _,
                     offset: p.chunk().offset(),
                     stride: p.chunk().stride(),
                 })
