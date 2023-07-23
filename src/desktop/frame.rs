@@ -1,14 +1,14 @@
 use std::{
-    os::fd::{AsRawFd, RawFd},
     mem::MaybeUninit,
-    ptr, 
+    os::fd::{AsRawFd, RawFd},
+    ptr,
 };
 
 use gles31::{
-    glBindBuffer, glBindTexture, glGetError, glPixelStorei, GL_NO_ERROR,
-    GL_PIXEL_UNPACK_BUFFER, GL_TEXTURE_2D, GL_UNPACK_ALIGNMENT, GL_UNSIGNED_BYTE, glTexImage2D, glTexSubImage2D,
+    glBindBuffer, glBindTexture, glGetError, glPixelStorei, glTexImage2D, 
+    GL_NO_ERROR, GL_PIXEL_UNPACK_BUFFER, GL_TEXTURE_2D, GL_UNPACK_ALIGNMENT, GL_UNSIGNED_BYTE, GL_RGBA8, GL_RGBA,
 };
-use libc::{mmap, munmap, close};
+use libc::{close, mmap, munmap, MAP_SHARED, PROT_READ};
 use wayland_client::protocol::{wl_buffer::WlBuffer, wl_shm::Format, wl_shm_pool::WlShmPool};
 
 use crate::gl::egl::{
@@ -116,6 +116,16 @@ impl DmabufFrame {
     }
 }
 
+impl Drop for DmabufFrame {
+    fn drop(&mut self) {
+        for i in 0..self.num_planes {
+            if self.planes[i].fd >= 0 {
+                unsafe { close(self.planes[i].fd) };
+            }
+        }
+    }
+}
+
 pub struct MemFdFrame {
     pub path: String,
     pub fmt: FrameFormat,
@@ -140,26 +150,34 @@ impl MemFdFrame {
     }
 }
 
+impl Drop for MemFdFrame {
+    fn drop(&mut self) {
+        if let Some(buffer) = self.buffer.as_ref() {
+            buffer.destroy();
+        }
+        if let Some(pool) = self.buffer.as_ref() {
+            pool.destroy();
+        }
+        if self.plane.fd >= 0 {
+            unsafe { close(self.plane.fd) };
+        }
+    }
+}
+
+const GL_RGB: u32 = 0x1907;
+const GL_BGR: u32 = 0x80E0;
 const GL_BGRA: u32 = 0x80E1;
-const GL_BGRA8: u32 = 0x93A1;
+const GL_BGRA8_EXT: u32 = 0x93A1;
 
 pub fn texture_load_memfd(texture: u32, f: &MemFdFrame) {
     unsafe {
         let fd = f.plane.fd.as_raw_fd();
-        println!("{} @ {}x{} = {}", fd, f.fmt.w, f.fmt.h, f.fmt.size);
 
-        if fd == 0 {
+        if fd <= 0 {
             return;
         }
 
-        let ptr = mmap(
-            ptr::null_mut(),
-            f.fmt.size,
-            0x01,
-            0x01,
-            fd,
-            0,
-        );
+        let ptr = mmap(ptr::null_mut(), f.fmt.size, PROT_READ, MAP_SHARED, fd, 0);
 
         if ptr.is_null() {
             return;
@@ -174,13 +192,33 @@ pub fn texture_load_memfd(texture: u32, f: &MemFdFrame) {
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
         debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
+        let (fmt, pf) = match f.format {
+            Format::Bgra8888 | Format::Bgrx8888 => (GL_BGRA8_EXT, GL_BGRA),
+            Format::Bgr888 => (GL_BGRA8_EXT, GL_BGR),
+            Format::Rgba8888 | Format::Rgbx8888 => (GL_RGBA8, GL_RGBA),
+            Format::Rgb888 => (GL_RGBA8, GL_RGB),
+            _ => panic!("Unknown format 0x{:x}", f.format as u32),
+        };
+
         //glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f.fmt.w, f.fmt.h, GL_BGRA, GL_UNSIGNED_BYTE, ptr);
 
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA8 as _, f.fmt.w, f.fmt.h, 0, GL_BGRA, GL_UNSIGNED_BYTE, ptr);
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            fmt as _,
+            f.fmt.w,
+            f.fmt.h,
+            0,
+            pf,
+            GL_UNSIGNED_BYTE,
+            ptr,
+        );
+        debug_assert_eq!(glGetError(), GL_NO_ERROR);
+
+        glBindTexture(GL_TEXTURE_2D, 0);
         debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
         munmap(ptr, f.fmt.size);
-        close(fd);
     }
 }
 

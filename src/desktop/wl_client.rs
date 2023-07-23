@@ -1,6 +1,7 @@
 use libc::{ftruncate, shm_open, shm_unlink};
 use libc::{O_CREAT, O_RDWR, S_IRUSR, S_IWUSR};
-use std::os::fd::{FromRawFd, OwnedFd, IntoRawFd};
+use pipewire::proxy;
+use std::os::fd::IntoRawFd;
 use std::sync::Mutex;
 use std::{cell::RefCell, os::fd::AsRawFd, rc::Rc, sync::Arc};
 use wayland_client::protocol::wl_buffer::WlBuffer;
@@ -125,9 +126,11 @@ impl WlClientState {
         None
     }
 
-    pub fn request_screencopy_frame(&mut self, output_idx: usize) -> Option<Arc<Mutex<MemFdFrame>>> {
-
-        let output_name = &self.outputs[output_idx].name;
+    pub fn request_screencopy_frame(
+        &mut self,
+        output_idx: usize,
+    ) -> Option<Arc<Mutex<MemFdFrame>>> {
+        let output_name = format!("/{}\0", &self.outputs[output_idx].name);
         let data = Arc::new(Mutex::new(MemFdFrame::new(output_name.to_string())));
 
         if let Some(screencopy_manager) = self.maybe_wlr_screencopy_mgr.as_ref() {
@@ -219,7 +222,7 @@ impl Dispatch<WlOutput, u32> for WlClientState {
 impl Dispatch<ZwlrExportDmabufFrameV1, Arc<Mutex<DmabufFrame>>> for WlClientState {
     fn event(
         _state: &mut Self,
-        _proxy: &ZwlrExportDmabufFrameV1,
+        proxy: &ZwlrExportDmabufFrameV1,
         event: <ZwlrExportDmabufFrameV1 as Proxy>::Event,
         data: &Arc<Mutex<DmabufFrame>>,
         _conn: &Connection,
@@ -254,7 +257,7 @@ impl Dispatch<ZwlrExportDmabufFrameV1, Arc<Mutex<DmabufFrame>>> for WlClientStat
                 offset,
                 stride,
                 ..
-        } => {
+            } => {
                 if let Ok(mut data) = data.lock() {
                     if data.status != FRAME_PENDING {
                         println!("[Wayland]: Object event while frame is not pending!");
@@ -278,12 +281,14 @@ impl Dispatch<ZwlrExportDmabufFrameV1, Arc<Mutex<DmabufFrame>>> for WlClientStat
                     }
                     data.status = FRAME_READY;
                 }
+                proxy.destroy();
             }
             zwlr_export_dmabuf_frame_v1::Event::Cancel { .. } => {
                 if let Ok(mut data) = data.lock() {
                     println!("[Wayland]: Frame capture failed.");
                     data.status = FRAME_FAILED;
                 }
+                proxy.destroy();
             }
             _ => {}
         }
@@ -307,7 +312,6 @@ impl Dispatch<ZwlrScreencopyFrameV1, Arc<Mutex<MemFdFrame>>> for WlClientState {
                 stride,
             } => {
                 if let Ok(mut data) = data.lock() {
-                    println!("Buffer: {}", &data.path);
                     if data.status != FRAME_PENDING {
                         println!("[Wayland]: Buffer event while frame is not pending!");
                         return;
@@ -322,7 +326,8 @@ impl Dispatch<ZwlrScreencopyFrameV1, Arc<Mutex<MemFdFrame>>> for WlClientState {
 
                     let shm = state.maybe_shm.as_ref().unwrap();
                     unsafe {
-                        let fd = shm_open(data.path.as_ptr() as _, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+                        let fd =
+                            shm_open(data.path.as_ptr() as _, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
                         shm_unlink(data.path.as_ptr() as _);
                         ftruncate(fd, data.fmt.size as _);
 
@@ -346,7 +351,6 @@ impl Dispatch<ZwlrScreencopyFrameV1, Arc<Mutex<MemFdFrame>>> for WlClientState {
                 }
             }
             zwlr_screencopy_frame_v1::Event::Ready { .. } => {
-                println!("Ready");
                 if let Ok(mut data) = data.lock() {
                     if data.status != FRAME_PENDING {
                         println!("[Wayland]: Ready event while frame is not pending!");
@@ -354,10 +358,18 @@ impl Dispatch<ZwlrScreencopyFrameV1, Arc<Mutex<MemFdFrame>>> for WlClientState {
                     }
                     data.status = FRAME_READY;
                 }
+                proxy.destroy();
             }
             zwlr_screencopy_frame_v1::Event::Failed => {
                 if let Ok(mut data) = data.lock() {
                     println!("[Wayland]: Frame capture failed.");
+                    data.status = FRAME_FAILED;
+                }
+                proxy.destroy();
+            }
+            zwlr_screencopy_frame_v1::Event::Damage { .. } => {
+                if let Ok(mut data) = data.lock() {
+                    println!("[Wayland]: Frame is damaged.");
                     data.status = FRAME_FAILED;
                 }
             }

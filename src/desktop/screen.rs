@@ -1,7 +1,7 @@
-use glam::{Affine3A, Vec3A, vec3, vec2};
+use glam::{vec2, vec3, Affine3A, Vec3A};
 use stereokit::{
-    Color128, Material, Mesh, RenderLayer, SkDraw, StereoKitDraw, StereoKitMultiThread, Tex,
-    TextureFormat, TextureType, Vert, sys::color32,
+    sys::color32, Color128, Material, Mesh, RenderLayer, SkDraw, StereoKitDraw,
+    StereoKitMultiThread, Tex, TextureFormat, TextureType, Vert,
 };
 
 use crate::{
@@ -55,7 +55,7 @@ impl DesktopScreen {
             &self.output.logical_pos.1
         );
 
-        if true {
+        if false {
             println!("{}: Using Wlr Screencopy", &self.output.name);
             let wl = WlClientState::new();
 
@@ -72,7 +72,6 @@ impl DesktopScreen {
 
             return true;
         } else {
-
             if let Ok(session) = SESSION.lock() {
                 println!("{}: Using Pipewire capture", &self.output.name);
                 let file_name = format!("{}.token", self.output.name);
@@ -87,49 +86,6 @@ impl DesktopScreen {
         }
 
         false
-    }
-
-    pub fn render(&mut self, sk: &SkDraw, state: &mut AppState) {
-        if !self.overlay.visible {
-            return;
-        }
-
-        let gfx = self.gfx.as_mut().unwrap();
-
-        if let Some(capture) = self.capture.as_mut() {
-            let handle = unsafe { sk.tex_get_surface(&gfx.tex) as usize as u32 };
-            capture.render(handle);
-
-            //let data: Vec<u8> = vec![255, 0, 0, 255];
-            //gl_tex.allocate(1, 1, GL_SRGB8_ALPHA8 as _, data.as_ptr());
-
-            //let handle = unsafe { sk.tex_get_surface(&gfx.tex) as usize as u32 };
-            //capture.render(handle);
-
-            /*
-            state.renderer.begin_sk(sk, &mut gfx.tex);
-            let col0 = Vec3::new(0., 1., 1.);
-            let col1 = Vec3::new(1., 0., 1.);
-            let col2 = Vec3::new(1., 1., 0.);
-            state.renderer.draw_color(col0, 0., h / 2., w / 2., h / 2.);
-            state
-                .renderer
-                .draw_color(col2, w / 2., h / 2., w / 2., h / 2.);
-            state.renderer.draw_color(col1, w / 2., 0., w / 2., h / 2.);
-            state
-                .renderer
-                .draw_sprite(&gl_tex, w / 4., h / 4., w / 2., h / 2.);
-            state.renderer.end();
-            */
-        }
-
-        sk.mesh_draw(
-            &gfx.mesh,
-            &gfx.mat,
-            self.overlay.transform,
-            self.overlay.color,
-            RenderLayer::LAYER0,
-        );
     }
 }
 
@@ -195,11 +151,12 @@ impl Overlay for DesktopScreen {
 
             #[rustfmt::skip]
             let verts = vec![
-                Vert { pos: vec3(-half_w, -half_h, 0.), uv: vec2(x0, y1), norm, col },
-                Vert { pos: vec3(-half_w, half_h, 0.), uv: vec2(x0, y0), norm, col },
-                Vert { pos: vec3(half_w, -half_h, 0.), uv: vec2(x1, y1), norm, col },
-                Vert { pos: vec3(half_w, half_h, 0.), uv: vec2(x1, y0), norm, col },
+                Vert { pos: vec3(-half_w, -half_h, 0.), uv: vec2(x1, y1), norm, col },
+                Vert { pos: vec3(-half_w, half_h, 0.), uv: vec2(x1, y0), norm, col },
+                Vert { pos: vec3(half_w, -half_h, 0.), uv: vec2(x0, y1), norm, col },
+                Vert { pos: vec3(half_w, half_h, 0.), uv: vec2(x0, y0), norm, col },
             ];
+
             let inds = vec![1, 2, 0, 2, 1, 3];
             sk.mesh_set_verts(&mesh, &verts, true);
             sk.mesh_set_inds(&mesh, &inds);
@@ -226,6 +183,33 @@ impl Overlay for DesktopScreen {
             "Overlay at {}, looking at {}",
             forward,
             self.overlay.transform.transform_vector3a(-Vec3A::Z)
+        );
+    }
+ 
+    fn render(&mut self, sk: &SkDraw, _state: &mut AppState) {
+        if !self.overlay.visible {
+            return;
+        }
+
+        let gfx = self.gfx.as_mut().unwrap();
+
+        if let Some(capture) = self.capture.as_mut() {
+            let handle = unsafe { sk.tex_get_surface(&gfx.tex) as usize as u32 };
+            capture.render(handle);
+
+            /*
+            state.renderer.begin_sk(sk, &mut gfx.tex);
+            state.renderer.draw_color(col0, 0., h / 2., w / 2., h / 2.);
+            state.renderer.end();
+            */
+        }
+
+        sk.mesh_draw(
+            &gfx.mesh,
+            &gfx.mat,
+            self.overlay.transform,
+            self.overlay.color,
+            RenderLayer::LAYER0,
         );
     }
 }

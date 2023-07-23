@@ -22,7 +22,6 @@ pub const EGL_LINUX_DMABUF_EXT: EGLenum = 0x3270;
 #[allow(non_upper_case_globals)]
 static glEGLImageTargetTexture2DOES_p: AtomicUsize = AtomicUsize::new(0);
 
-#[inline]
 #[allow(non_snake_case)]
 pub fn glEGLImageTargetTexture2DOES(target: i32, egl_image: EGLImage) -> () {
     let u = glEGLImageTargetTexture2DOES_p.load(Ordering::Relaxed);
@@ -152,11 +151,11 @@ pub fn gl_init(sk: &stereokit::SkSingle) {
 
         load_gl_functions(&wrap).expect("Failed to load GL functions.");
 
-        let p0 = proc_fn(b"glEGLImageTargetTexture2DOES".as_ptr());
+        let p0 = proc_fn(b"glEGLImageTargetTexture2DOES\0".as_ptr());
         glEGLImageTargetTexture2DOES_p.store(p0 as usize, Ordering::Relaxed);
         debug_assert_ne!(p0, 0 as _);
 
-        let p1 = proc_fn(b"glCopyImageSubData".as_ptr());
+        let p1 = proc_fn(b"glCopyImageSubData\0".as_ptr());
         glCopyImageSubData_p.store(p1 as usize, Ordering::Relaxed);
         debug_assert_ne!(p1, 0 as _);
 

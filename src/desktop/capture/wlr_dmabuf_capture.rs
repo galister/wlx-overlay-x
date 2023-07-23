@@ -1,5 +1,5 @@
 use crate::desktop::{
-    frame::{texture_load_dmabuf, FRAME_PENDING, FRAME_READY, FRAME_FAILED},
+    frame::{texture_load_dmabuf, FRAME_FAILED, FRAME_PENDING, FRAME_READY},
     wl_client::{OutputState, WlClientState},
 };
 

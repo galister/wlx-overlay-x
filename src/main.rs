@@ -1,13 +1,18 @@
+use std::time::Instant;
+
 use desktop::{screen::DesktopScreen, wl_client::WlClientState};
 use gl::{egl::gl_init, GlRenderer};
 use once_cell::unsync::Lazy;
 use overlay::Overlay;
+use signal::{Signal, trap::Trap};
 use stereokit::*;
+use watch::WatchPanel;
 
 mod desktop;
 mod gl;
 mod overlay;
 mod session;
+mod watch;
 
 pub struct AppState {
     renderer: GlRenderer,
@@ -27,20 +32,20 @@ async fn main() {
     }
     .init()
     .expect("StereoKit init fail!");
+    
+    let trap = Trap::trap(&vec![Signal::SIGBUS]);
+
 
     gl_init(&sk);
 
     let mut screens: Vec<DesktopScreen> = vec![];
 
     let wl = WlClientState::new();
-    let mut first = true;
     for output in wl.outputs {
+        let want_visible = output.name == "DP-3";
         let mut screen = DesktopScreen::new(output);
         if screen.try_init(wl.maybe_wlr_dmabuf_mgr.is_some()).await {
-            if first {
-                screen.overlay_mut().want_visible = true;
-                first = false;
-            }
+            screen.overlay_mut().want_visible = want_visible;
             screens.push(screen);
         }
     }
@@ -49,8 +54,13 @@ async fn main() {
         renderer: GlRenderer::new(),
     });
 
+    let mut watch = WatchPanel::new();
+
     sk.run(
         |sk| {
+
+            watch.render(sk, &mut state);
+
             for screen in screens.iter_mut() {
                 let overlay = screen.overlay_mut();
                 if overlay.want_visible && !overlay.visible {
@@ -58,6 +68,9 @@ async fn main() {
                 }
 
                 screen.render(sk, &mut state);
+                if trap.wait(Instant::now()).is_some() {
+                    println!("SIGBUS caught!");
+                }
             }
         },
         |_| {},

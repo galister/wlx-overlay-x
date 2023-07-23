@@ -1,8 +1,7 @@
 use std::io::Cursor;
 use std::mem::MaybeUninit;
-use std::os::fd::FromRawFd;
 use std::rc::Rc;
-use std::{cell::RefCell, os::fd::OwnedFd};
+use std::cell::RefCell;
 
 use crate::desktop::frame::{DrmFormat, FrameFormat, FramePlane};
 

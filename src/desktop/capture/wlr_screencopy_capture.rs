@@ -1,7 +1,7 @@
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc, Mutex};
 
 use crate::desktop::{
-    frame::{texture_load_memfd, FRAME_PENDING, FRAME_READY, FRAME_FAILED, MemFdFrame},
+    frame::{texture_load_memfd, MemFdFrame, FRAME_FAILED, FRAME_PENDING, FRAME_READY},
     wl_client::{OutputState, WlClientState},
 };
 
@@ -10,7 +10,7 @@ use super::DesktopCapture;
 pub struct WlrScreencopyCapture {
     output_idx: usize,
     wl: WlClientState,
-    frame: Option<Arc<Mutex<MemFdFrame>>>
+    frame: Option<Arc<Mutex<MemFdFrame>>>,
 }
 
 impl WlrScreencopyCapture {
@@ -24,7 +24,11 @@ impl WlrScreencopyCapture {
         }
         debug_assert_ne!(output_idx, 420420);
 
-        WlrScreencopyCapture { wl, output_idx, frame: None }
+        WlrScreencopyCapture {
+            wl,
+            output_idx,
+            frame: None,
+        }
     }
 }
 
@@ -34,7 +38,7 @@ impl DesktopCapture for WlrScreencopyCapture {
     fn resume(&mut self) {}
     fn render(&mut self, texture: u32) {
         self.frame = self.wl.request_screencopy_frame(self.output_idx);
-        if let Some(mutex) = self.frame.as_ref() { 
+        if let Some(mutex) = self.frame.as_ref() {
             if let Ok(frame) = mutex.lock() {
                 match frame.status {
                     FRAME_PENDING => {
