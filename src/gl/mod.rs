@@ -6,7 +6,7 @@ use gles31::{
     glBindVertexArray, glBlendEquationSeparate, glBlendFunc, glBlendFuncSeparate, glBufferData,
     glCheckFramebufferStatus, glClear, glColorMask, glCompileShader, glCreateProgram,
     glCreateShader, glDeleteBuffers, glDeleteFramebuffers, glDeleteProgram, glDeleteShader,
-    glDeleteTextures, glDeleteVertexArrays, glDetachShader, glDrawArrays, glDrawBuffers,
+    glDeleteTextures, glDeleteVertexArrays, glDetachShader, glDrawBuffers,
     glDrawElements, glEnableVertexAttribArray, glFramebufferTexture2D, glGenBuffers,
     glGenFramebuffers, glGenTextures, glGenVertexArrays, glGetError, glGetShaderInfoLog,
     glGetShaderiv, glGetUniformLocation, glLinkProgram, glShaderSource, glTexImage2D,
@@ -17,7 +17,7 @@ use gles31::{
     GL_NO_ERROR, GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_PIXEL_PACK_BUFFER, GL_PIXEL_UNPACK_BUFFER,
     GL_RGBA, GL_SRC_ALPHA, GL_SRGB8_ALPHA8, GL_STATIC_DRAW, GL_TEXTURE0, GL_TEXTURE_2D,
     GL_TEXTURE_MAG_FILTER, GL_TEXTURE_MIN_FILTER, GL_TEXTURE_WRAP_S, GL_TEXTURE_WRAP_T,
-    GL_TRIANGLES, GL_TRIANGLE_STRIP, GL_UNSIGNED_BYTE, GL_UNSIGNED_INT, GL_VERTEX_SHADER, GL_ZERO,
+    GL_TRIANGLES,GL_UNSIGNED_BYTE, GL_UNSIGNED_INT, GL_VERTEX_SHADER, GL_ZERO,
 };
 use stereokit::{SkDraw, StereoKitMultiThread};
 
@@ -126,7 +126,6 @@ impl GlTexture {
 
 impl Drop for GlTexture {
     fn drop(&mut self) {
-        println!("[GL] Delete texture {}", self.handle);
         unsafe {
             glDeleteTextures(1, &self.handle);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
@@ -236,7 +235,6 @@ impl GlShader {
 
 impl Drop for GlShader {
     fn drop(&mut self) {
-        println!("[GL] Delete program {}", self.handle);
         unsafe { glDeleteProgram(self.handle) };
     }
 }
@@ -284,7 +282,6 @@ impl GlFramebuffer {
 
 impl Drop for GlFramebuffer {
     fn drop(&mut self) {
-        println!("[GL] Delete framebuffer {}", self.handle);
         unsafe {
             glDeleteFramebuffers(1, &self.handle);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
@@ -344,7 +341,6 @@ impl GlBuffer {
 
 impl Drop for GlBuffer {
     fn drop(&mut self) {
-        println!("[GL] Delete buffer {}", self.handle);
         unsafe {
             glDeleteBuffers(1, &self.handle);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
@@ -419,7 +415,6 @@ impl GlVertexArray {
 
 impl Drop for GlVertexArray {
     fn drop(&mut self) {
-        println!("[GL] Delete vertex array {}", self.handle);
         unsafe {
             glDeleteVertexArrays(1, &self.handle);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
@@ -443,6 +438,7 @@ pub struct GlRenderer {
     shader_sprite: GlShader,
     shader_glyph: GlShader,
     shader_color: GlShader,
+    shader_srgb: GlShader,
     width: u32,
     height: u32,
 }
@@ -481,6 +477,9 @@ impl GlRenderer {
         let mut shader_color = GlShader::new(VERT_COMMON, FRAG_COLOR);
         shader_color.has_uniform(UNIFORM_COL0);
 
+        let mut shader_srgb = GlShader::new(VERT_COMMON, FRAG_SRGB);
+        shader_srgb.has_uniform(UNIFORM_TEX0);
+
         GlRenderer {
             vao,
             framebuffer: GlFramebuffer::new(),
@@ -489,6 +488,7 @@ impl GlRenderer {
             shader_sprite,
             shader_glyph,
             shader_color,
+            shader_srgb,
             width: 0,
             height: 0,
         }
@@ -557,10 +557,36 @@ impl GlRenderer {
         self.vao.vbo.data(&self.vertices);
     }
 
+    pub fn srgb_correction(&mut self, texture: u32) {
+        self.use_rect(0., 0., self.width as _, self.height as _);
+        self.vao.bind();
+
+        self.shader_srgb.use_shader();
+
+        let location = self.shader_srgb.locations[UNIFORM_TEX0];
+        debug_assert_ne!(location, -1);
+
+        unsafe {
+            glBindTexture(GL_TEXTURE_2D, texture);
+            debug_assert_eq!(glGetError(), GL_NO_ERROR);
+            glBlendFunc(GL_ONE, GL_ZERO);
+            glUniform1i(location, 0);
+            debug_assert_eq!(glGetError(), GL_NO_ERROR);
+
+            glDrawElements(
+                GL_TRIANGLES,
+                self.indices.len() as _,
+                GL_UNSIGNED_INT,
+                null(),
+            );
+            debug_assert_eq!(glGetError(), GL_NO_ERROR);
+        }
+    }
+
     pub fn draw_sprite(&mut self, texture: &GlTexture, x: f32, y: f32, w: f32, h: f32) {
         self.use_rect(x, y, w, h);
-
         self.vao.bind();
+
         self.shader_sprite.use_shader();
         texture.bind(0);
 
@@ -571,7 +597,6 @@ impl GlRenderer {
             glUniform1i(location, 0);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
             glDrawElements(
                 GL_TRIANGLES,
                 self.indices.len() as _,
@@ -592,7 +617,6 @@ impl GlRenderer {
             glUniform4f(location, color.x, color.y, color.z, 1.);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
             glDrawElements(
                 GL_TRIANGLES,
                 self.indices.len() as _,

@@ -1,9 +1,10 @@
 use libc::{ftruncate, shm_open, shm_unlink};
 use libc::{O_CREAT, O_RDWR, S_IRUSR, S_IWUSR};
-use pipewire::proxy;
+use log::warn;
+use std::cmp::max;
 use std::os::fd::IntoRawFd;
 use std::sync::Mutex;
-use std::{cell::RefCell, os::fd::AsRawFd, rc::Rc, sync::Arc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 use wayland_client::protocol::wl_buffer::WlBuffer;
 
 use smithay_client_toolkit::reexports::{
@@ -42,6 +43,7 @@ pub struct OutputState {
     pub id: u32,
     pub name: String,
     pub model: String,
+    pub pos: (i32, i32),
     pub size: (i32, i32),
     pub logical_pos: (i32, i32),
     pub logical_size: (i32, i32),
@@ -92,6 +94,7 @@ impl WlClientState {
                     id: o.name,
                     name: String::new(),
                     model: String::new(),
+                    pos: (0, 0),
                     size: (0, 0),
                     logical_pos: (0, 0),
                     logical_size: (0, 0),
@@ -106,6 +109,15 @@ impl WlClientState {
         state.dispatch();
 
         state
+    }
+
+    pub fn get_desktop_extent(&self) -> [i32; 2] {
+        let mut extent = [0, 0];
+        for output in self.outputs.iter() {
+            extent[0] = max(extent[0], output.logical_pos.0 + output.logical_size.0);
+            extent[1] = max(extent[1], output.logical_pos.1 + output.logical_size.1);
+        }
+        extent
     }
 
     pub fn request_dmabuf_frame(&mut self, output_idx: usize) -> Option<Arc<Mutex<DmabufFrame>>> {
@@ -207,11 +219,12 @@ impl Dispatch<WlOutput, u32> for WlClientState {
                 }
             }
             wl_output::Event::Geometry {
-                model, transform, ..
+                model, transform, x, y, ..
             } => {
                 if let Some(output) = state.outputs.iter_mut().find(|o| o.id == *data) {
                     output.model = model;
                     output.transform = transform;
+                    output.pos = (x, y);
                 }
             }
             _ => {}
@@ -240,7 +253,7 @@ impl Dispatch<ZwlrExportDmabufFrameV1, Arc<Mutex<DmabufFrame>>> for WlClientStat
             } => {
                 if let Ok(mut data) = data.lock() {
                     if data.status != FRAME_PENDING {
-                        println!("[Wayland]: Frame event while frame is not pending!");
+                        warn!("[Wayland]: Frame event while frame is not pending!");
                         return;
                     }
 
@@ -260,11 +273,9 @@ impl Dispatch<ZwlrExportDmabufFrameV1, Arc<Mutex<DmabufFrame>>> for WlClientStat
             } => {
                 if let Ok(mut data) = data.lock() {
                     if data.status != FRAME_PENDING {
-                        println!("[Wayland]: Object event while frame is not pending!");
+                        warn!("[Wayland]: Object event while frame is not pending!");
                         return;
                     }
-
-                    println!("Object {} has fd {}", index, fd.as_raw_fd());
 
                     data.planes[index as usize] = FramePlane {
                         fd: fd.into_raw_fd(),
@@ -276,7 +287,7 @@ impl Dispatch<ZwlrExportDmabufFrameV1, Arc<Mutex<DmabufFrame>>> for WlClientStat
             zwlr_export_dmabuf_frame_v1::Event::Ready { .. } => {
                 if let Ok(mut data) = data.lock() {
                     if data.status != FRAME_PENDING {
-                        println!("[Wayland]: Ready event while frame is not pending!");
+                        warn!("[Wayland]: Ready event while frame is not pending!");
                         return;
                     }
                     data.status = FRAME_READY;
@@ -285,7 +296,7 @@ impl Dispatch<ZwlrExportDmabufFrameV1, Arc<Mutex<DmabufFrame>>> for WlClientStat
             }
             zwlr_export_dmabuf_frame_v1::Event::Cancel { .. } => {
                 if let Ok(mut data) = data.lock() {
-                    println!("[Wayland]: Frame capture failed.");
+                    warn!("[Wayland]: Frame capture failed.");
                     data.status = FRAME_FAILED;
                 }
                 proxy.destroy();
@@ -313,7 +324,7 @@ impl Dispatch<ZwlrScreencopyFrameV1, Arc<Mutex<MemFdFrame>>> for WlClientState {
             } => {
                 if let Ok(mut data) = data.lock() {
                     if data.status != FRAME_PENDING {
-                        println!("[Wayland]: Buffer event while frame is not pending!");
+                        warn!("[Wayland]: Buffer event while frame is not pending!");
                         return;
                     }
                     if let Ok(format) = format.into_result() {
@@ -353,7 +364,7 @@ impl Dispatch<ZwlrScreencopyFrameV1, Arc<Mutex<MemFdFrame>>> for WlClientState {
             zwlr_screencopy_frame_v1::Event::Ready { .. } => {
                 if let Ok(mut data) = data.lock() {
                     if data.status != FRAME_PENDING {
-                        println!("[Wayland]: Ready event while frame is not pending!");
+                        warn!("[Wayland]: Ready event while frame is not pending!");
                         return;
                     }
                     data.status = FRAME_READY;
@@ -362,14 +373,14 @@ impl Dispatch<ZwlrScreencopyFrameV1, Arc<Mutex<MemFdFrame>>> for WlClientState {
             }
             zwlr_screencopy_frame_v1::Event::Failed => {
                 if let Ok(mut data) = data.lock() {
-                    println!("[Wayland]: Frame capture failed.");
+                    warn!("[Wayland]: Frame capture failed.");
                     data.status = FRAME_FAILED;
                 }
                 proxy.destroy();
             }
             zwlr_screencopy_frame_v1::Event::Damage { .. } => {
                 if let Ok(mut data) = data.lock() {
-                    println!("[Wayland]: Frame is damaged.");
+                    warn!("[Wayland]: Frame is damaged.");
                     data.status = FRAME_FAILED;
                 }
             }

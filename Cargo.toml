@@ -1,10 +1,10 @@
 [package]
-name = "wlxr_overlay"
+name = "wlx-overlay-x"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "WlXrOverlay"
+name = "wlx-overlay-x"
 path = "src/main.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -26,6 +26,9 @@ libloading = "0.8.0"
 libc = "0.2.147"
 signal = "0.7.0"
 chrono = "0.4.26"
+input-linux = "0.6.0"
+log = { version = "0.4.19", features = ["std"] }
+env_logger = "0.10.0"
 
 [dependencies.stereokit]
 default-features = false

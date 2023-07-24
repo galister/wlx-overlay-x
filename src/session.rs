@@ -1,4 +1,5 @@
-use glam::{Vec3, Quat};
+use glam::{Quat, Vec3};
+use log::error;
 use once_cell::sync::Lazy;
 use std::fs;
 use std::path::Path;
@@ -32,7 +33,7 @@ impl WlXrSession {
                 .to_string();
         } else {
             config_path = "/tmp/wlxroverlay".to_string();
-            print!("Err: $HOME is not set, using {}", config_path);
+            error!("Err: $HOME is not set, using {}", config_path);
         }
         let _ = fs::create_dir(&config_path);
 

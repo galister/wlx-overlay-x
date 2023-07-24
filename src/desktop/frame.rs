@@ -5,8 +5,9 @@ use std::{
 };
 
 use gles31::{
-    glBindBuffer, glBindTexture, glGetError, glPixelStorei, glTexImage2D, 
-    GL_NO_ERROR, GL_PIXEL_UNPACK_BUFFER, GL_TEXTURE_2D, GL_UNPACK_ALIGNMENT, GL_UNSIGNED_BYTE, GL_RGBA8, GL_RGBA,
+    glBindBuffer, glBindTexture, glGetError, glPixelStorei, glTexImage2D, GL_NO_ERROR,
+    GL_PIXEL_UNPACK_BUFFER, GL_RGBA, GL_RGBA8, GL_TEXTURE_2D, GL_UNPACK_ALIGNMENT,
+    GL_UNSIGNED_BYTE,
 };
 use libc::{close, mmap, munmap, MAP_SHARED, PROT_READ};
 use wayland_client::protocol::{wl_buffer::WlBuffer, wl_shm::Format, wl_shm_pool::WlShmPool};
@@ -227,8 +228,6 @@ pub fn texture_load_dmabuf(texture: u32, frame: &DmabufFrame) {
 
     let egl_image = eglCreateImage(EGL_LINUX_DMABUF_EXT, attribs.as_ptr());
     debug_assert_eq!(eglGetError(), EGL_SUCCESS);
-
-    println!("{:x}", egl_image as usize);
 
     unsafe {
         glBindTexture(GL_TEXTURE_2D, texture);

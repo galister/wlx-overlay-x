@@ -1,16 +1,16 @@
 use std::mem::transmute;
 
 use chrono::Local;
-use glam::{Affine3A, Vec3, Quat, vec2};
-use stereokit::{StereoKitMultiThread, StereoKitSingleThread, Pose};
+use glam::{vec2, Affine3A, Quat, Vec3};
+use stereokit::{Pose, StereoKitMultiThread, StereoKitSingleThread};
 
-use crate::{overlay::{OverlayData, Overlay, COLOR_WHITE}, AppState, session::SESSION};
+use crate::session::SESSION;
 
 pub const WATCH_DEFAULT_POS: Vec3 = Vec3::new(0., -0.05, 0.05);
 pub const WATCH_DEFAULT_ROT: Quat = Quat::from_xyzw(0., 1., 0., 0.);
 
 pub struct WatchPanel {
-    pub overlay: OverlayData,
+    pub transform: Affine3A,
     pub hand: u32,
 }
 
@@ -19,42 +19,37 @@ impl WatchPanel {
         if let Ok(session) = SESSION.lock() {
             return WatchPanel {
                 hand: session.watch_hand,
-                overlay: OverlayData { 
-                    visible: false , 
-                    want_visible: true, 
-                    color: COLOR_WHITE, 
-                    transform: Affine3A::from_rotation_translation(session.watch_rot, session.watch_pos),
-                }
-            }
+                transform: Affine3A::from_rotation_translation(
+                    session.watch_rot,
+                    session.watch_pos,
+                ),
+            };
         }
         panic!("Could not get session.");
     }
-}
 
-impl Overlay for WatchPanel {
-    fn show(&mut self, sk: &stereokit::SkDraw) {
-        
-    }
-    fn render(&mut self, sk: &stereokit::SkDraw, _state: &mut AppState) {
+    pub fn render(&mut self, sk: &stereokit::SkDraw) {
         let cur_hand = sk.input_hand(unsafe { transmute(self.hand) });
-        let mat = Affine3A::from_rotation_translation(cur_hand.palm.orientation, cur_hand.palm.position);
+        let mat =
+            Affine3A::from_rotation_translation(cur_hand.palm.orientation, cur_hand.palm.position);
         sk.hierarchy_push(mat);
-        sk.hierarchy_push(self.overlay.transform);
+        sk.hierarchy_push(self.transform);
 
-        sk.window("Watch", Pose::IDENTITY, vec2(0.115, 0.0575), stereokit::WindowType::Body, stereokit::MoveType::Exact, |ui| {
-            let date = Local::now();
+        sk.window(
+            "Watch",
+            Pose::IDENTITY,
+            vec2(0.115, 0.0575),
+            stereokit::WindowType::Body,
+            stereokit::MoveType::Exact,
+            |ui| {
+                let date = Local::now();
 
-            ui.label(format!("{}", &date.format("%H:%M")), true);
-            ui.label(format!("{}", &date.format("%b %d")), true);
-        }); 
+                ui.label(format!("{}", &date.format("%H:%M")), true);
+                ui.label(format!("{}", &date.format("%b %d")), true);
+            },
+        );
 
         sk.hierarchy_pop();
         sk.hierarchy_pop();
-    }
-    fn overlay(&self) -> &OverlayData {
-        &self.overlay
-    }
-    fn overlay_mut(&mut self) -> &mut OverlayData {
-        &mut self.overlay
     }
 }

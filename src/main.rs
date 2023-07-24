@@ -1,21 +1,68 @@
-use std::time::Instant;
+use std::{fs::create_dir, path::Path, sync::Mutex};
 
-use desktop::{screen::DesktopScreen, wl_client::WlClientState};
+use desktop::{wl_client::WlClientState, maybe_create_screen};
 use gl::{egl::gl_init, GlRenderer};
-use once_cell::unsync::Lazy;
-use overlay::Overlay;
-use signal::{Signal, trap::Trap};
+use glam::{Quat, Vec3};
+use input::INPUT;
+use interactions::InputState;
+use log::error;
+use once_cell::sync::Lazy;
+use overlay::OverlayData;
 use stereokit::*;
-use watch::WatchPanel;
+use watch::{WatchPanel, WATCH_DEFAULT_POS, WATCH_DEFAULT_ROT};
 
 mod desktop;
 mod gl;
+mod input;
+mod interactions;
 mod overlay;
 mod session;
 mod watch;
 
+pub static SESSION: Lazy<Mutex<WlXrSession>> = Lazy::new(|| Mutex::new(WlXrSession::load()));
+
+pub struct WlXrSession {
+    pub config_path: String,
+
+    pub screen_flip_h: bool,
+    pub screen_flip_v: bool,
+    pub screen_invert_color: bool,
+
+    pub watch_hand: u32,
+    pub watch_pos: Vec3,
+    pub watch_rot: Quat,
+}
+
+impl WlXrSession {
+    pub fn load() -> WlXrSession {
+        let config_path: String;
+
+        if let Ok(home) = std::env::var("HOME") {
+            config_path = Path::new(&home)
+                .join(".config/wlxroverlay")
+                .to_str()
+                .unwrap()
+                .to_string();
+        } else {
+            config_path = "/tmp/wlxroverlay".to_string();
+            error!("Err: $HOME is not set, using {}", config_path);
+        }
+        let _ = create_dir(&config_path);
+
+        WlXrSession {
+            config_path,
+            screen_flip_h: false,
+            screen_flip_v: false,
+            screen_invert_color: false,
+            watch_hand: 0,
+            watch_pos: WATCH_DEFAULT_POS,
+            watch_rot: WATCH_DEFAULT_ROT,
+        }
+    }
+}
+
 pub struct AppState {
-    renderer: GlRenderer,
+    gl: GlRenderer,
 }
 
 #[tokio::main]
@@ -32,45 +79,50 @@ async fn main() {
     }
     .init()
     .expect("StereoKit init fail!");
-    
-    let trap = Trap::trap(&vec![Signal::SIGBUS]);
 
+    env_logger::init();
 
     gl_init(&sk);
 
-    let mut screens: Vec<DesktopScreen> = vec![];
+    let mut input_state = InputState::new();
+
+    let mut overlays: Vec<OverlayData> = vec![];
 
     let wl = WlClientState::new();
-    for output in wl.outputs {
-        let want_visible = output.name == "DP-3";
-        let mut screen = DesktopScreen::new(output);
-        if screen.try_init(wl.maybe_wlr_dmabuf_mgr.is_some()).await {
-            screen.overlay_mut().want_visible = want_visible;
-            screens.push(screen);
+    if let Ok(mut input) = INPUT.lock() {
+        input.set_desktop_extent(wl.get_desktop_extent());
+    }
+
+    for i in 0..wl.outputs.len() {
+        let want_visible = wl.outputs[i].name == "DP-3";
+        if let Some(mut screen) = maybe_create_screen(&wl, i).await {
+            screen.want_visible = want_visible;
+            overlays.push(screen);
         }
     }
 
     let mut state = Lazy::new(|| AppState {
-        renderer: GlRenderer::new(),
+        gl: GlRenderer::new(),
     });
 
     let mut watch = WatchPanel::new();
 
     sk.run(
         |sk| {
+            input_state.update(sk, overlays.as_mut_slice());
 
-            watch.render(sk, &mut state);
+            watch.render(sk);
 
-            for screen in screens.iter_mut() {
-                let overlay = screen.overlay_mut();
-                if overlay.want_visible && !overlay.visible {
+            for screen in overlays.iter_mut() {
+                if screen.want_visible && !screen.visible {
                     screen.show(sk);
                 }
 
                 screen.render(sk, &mut state);
-                if trap.wait(Instant::now()).is_some() {
-                    println!("SIGBUS caught!");
-                }
+            }
+
+            if let Ok(mut input) = INPUT.lock() {
+                input.on_new_frame();
             }
         },
         |_| {},
