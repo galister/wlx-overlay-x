@@ -49,7 +49,7 @@ const EV_ABS: u16 = 0x3;
 
 impl UInputProvider {
     fn try_new() -> Option<Self> {
-        if let Ok(file) = File::open("/dev/uinput") {
+        if let Ok(file) = File::create("/dev/uinput") {
             let handle = UInputHandle::new(file);
 
             let id = InputId {
@@ -143,7 +143,9 @@ impl InputProvider for UInputProvider {
             new_event(time, EV_ABS, AbsoluteAxis::Y as _, y * mul_y),
             new_event(time, EV_SYN, 0, 0),
         ];
-        let _ = self.handle.write(&events);
+        if let Err(res) = self.handle.write(&events) {
+            error!("{}", res.to_string()); 
+        }
     }
     fn send_button(&self, button: u16, down: bool) {
         let time = get_time();
@@ -151,7 +153,9 @@ impl InputProvider for UInputProvider {
             new_event(time, EV_KEY, button, down as _),
             new_event(time, EV_SYN, 0, 0),
         ];
-        let _ = self.handle.write(&events);
+        if let Err(res) = self.handle.write(&events) {
+            error!("{}", res.to_string()); 
+        }
     }
     fn wheel(&self, delta: i32) {
         let time = get_time();
@@ -159,7 +163,9 @@ impl InputProvider for UInputProvider {
             new_event(time, EV_REL, RelativeAxis::Wheel as _, delta),
             new_event(time, EV_SYN, 0, 0),
         ];
-        let _ = self.handle.write(&events);
+        if let Err(res) = self.handle.write(&events) {
+            error!("{}", res.to_string()); 
+        }
     }
     fn set_modifiers(&self) {}
     fn send_key(&self, key: u16, down: bool) {
@@ -168,7 +174,9 @@ impl InputProvider for UInputProvider {
             new_event(time, EV_KEY, key - 8, down as _),
             new_event(time, EV_SYN, 0, 0),
         ];
-        let _ = self.handle.write(&events);
+        if let Err(res) = self.handle.write(&events) {
+            error!("{}", res.to_string()); 
+        }
     }
     fn set_desktop_extent(&mut self, extent: [i32; 2]) {
         info!("Desktop extent: {}x{}", extent[0], extent[1]);

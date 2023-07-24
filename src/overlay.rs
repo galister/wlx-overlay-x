@@ -4,7 +4,7 @@ use glam::{vec2, vec3, Affine3A, Quat, Vec3, Vec3A};
 use log::{debug, info};
 use stereokit::{
     sys::color32, Color128, Material, Mesh, RenderLayer, SkDraw, StereoKitMultiThread, Tex,
-    TextureFormat, TextureType, Vert, StereoKitDraw,
+    TextureFormat, TextureType, Vert, StereoKitDraw, Pose,
 };
 
 use crate::{interactions::{InteractionHandler, DummyInteractionHandler}, session::SESSION, AppState};
@@ -154,6 +154,10 @@ impl OverlayData {
             return;
         }
 
+        let m = Affine3A::from_rotation_translation(app.input.hmd.orientation, app.input.hmd.position);
+        debug!("{}", m.y_axis);
+        debug!("{}", m.transform_vector3a(Vec3A::Y));
+
         if let Some(gfx) = self.gfx.as_mut() {
             self.renderer.render(sk, &gfx.tex, app);
             sk.mesh_draw(
@@ -179,8 +183,11 @@ impl OverlayData {
         }
     }
 
-    pub fn on_move(&mut self, pos: Vec3) {
-        self.transform.translation = pos.into();
+    pub fn on_move(&mut self, pos: Vec3, hmd: &Pose) {
+        if (hmd.position - pos).length_squared() > 0.2 {
+            self.transform.translation = pos.into();
+            self.realign(hmd);
+        }
     }
 
     pub fn on_drop(&mut self) {
@@ -189,6 +196,40 @@ impl OverlayData {
 
     pub fn on_curve(&mut self) {
 
+    }
+
+    pub fn realign(&mut self, hmd_pose: &Pose) {
+        let hmd = Affine3A::from_rotation_translation(hmd_pose.orientation, hmd_pose.position);
+        let to_hmd = hmd.translation - self.transform.translation;
+        let up_dir: Vec3A;
+
+        if hmd.x_axis.dot(Vec3A::Y).abs() > 0.2 {
+            // Snap upright
+            up_dir = hmd.y_axis;
+        } else {
+            let dot = to_hmd.normalize().dot(hmd.z_axis);
+            let z_dist = to_hmd.length();
+            let y_dist = (self.transform.translation.y - hmd.translation.y).abs();
+            let x_angle = (y_dist / z_dist).asin();
+
+            if dot < -f32::EPSILON { // facing down
+                let up_point = hmd.translation + z_dist / x_angle.cos() * Vec3A::Y;
+                up_dir = (up_point - self.transform.translation).normalize();
+            } else if dot > f32::EPSILON { // facing up
+                let dn_point = hmd.translation + z_dist / x_angle.cos() * Vec3A::NEG_Y;
+                up_dir = (self.transform.translation - dn_point).normalize();
+            } else { // perfectly upright
+                up_dir = Vec3A::Y;
+            }
+        }
+
+        let scale = self.transform.x_axis.length();
+        let translation = self.transform.translation.clone();
+
+        let mut t = Affine3A::look_at_rh(self.transform.translation.into(), hmd.translation.into(), up_dir.into());
+        t.matrix3 = t.matrix3.mul_scalar(scale);
+        t.translation = translation;
+        self.transform = t;
     }
 }
 

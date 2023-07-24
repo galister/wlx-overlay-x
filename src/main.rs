@@ -63,6 +63,7 @@ impl WlXrSession {
 
 pub struct AppState {
     gl: GlRenderer,
+    input: InputState,
 }
 
 #[tokio::main]
@@ -84,8 +85,6 @@ async fn main() {
 
     gl_init(&sk);
 
-    let mut input_state = InputState::new();
-
     let mut overlays: Vec<OverlayData> = vec![];
 
     let wl = WlClientState::new();
@@ -94,22 +93,23 @@ async fn main() {
     }
 
     for i in 0..wl.outputs.len() {
-        let want_visible = wl.outputs[i].name == "DP-3";
+        let want_visible = wl.outputs[i].name == "DP-1";
         if let Some(mut screen) = maybe_create_screen(&wl, i).await {
             screen.want_visible = want_visible;
             overlays.push(screen);
         }
     }
 
-    let mut state = Lazy::new(|| AppState {
+    let mut app = Lazy::new(|| AppState {
         gl: GlRenderer::new(),
+        input: InputState::new(),
     });
 
     let mut watch = WatchPanel::new();
 
     sk.run(
         |sk| {
-            input_state.update(sk, overlays.as_mut_slice());
+            app.input.update(sk, overlays.as_mut_slice());
 
             watch.render(sk);
 
@@ -118,7 +118,7 @@ async fn main() {
                     screen.show(sk);
                 }
 
-                screen.render(sk, &mut state);
+                screen.render(sk, &mut app);
             }
 
             if let Ok(mut input) = INPUT.lock() {

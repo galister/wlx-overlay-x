@@ -1,6 +1,7 @@
 use std::{collections::VecDeque, mem::MaybeUninit};
 
 use glam::{vec2, Affine3A, Vec2, Vec3};
+use log::debug;
 use stereokit::{
     ButtonState, CullMode, Handed, InputSource, Pose, Ray, SkDraw, StereoKitMultiThread,
     StereoKitSingleThread,
@@ -9,7 +10,6 @@ use stereokit::{
 use crate::overlay::OverlayData;
 
 const HANDS: [Handed; 2] = [Handed::Left, Handed::Right];
-const HAND_SOURCES: [InputSource; 2] = [InputSource::HAND_LEFT, InputSource::HAND_RIGHT];
 
 pub const HAND_LEFT: usize = 0;
 pub const HAND_RIGHT: usize = 0;
@@ -27,7 +27,7 @@ pub trait InteractionHandler {
 }
 
 pub struct InputState {
-    hmd: Pose,
+    pub hmd: Pose,
     pointers: [PointerData; 2],
 }
 
@@ -70,7 +70,7 @@ impl InputState {
         self.hmd = sk.input_head();
         for h in 0..2 {
             self.pointers[h].update(&self.hmd, sk);
-            self.pointers[h].test_interactions(sk, interactables);
+            self.pointers[h].test_interactions(&self.hmd, sk, interactables);
         }
     }
 }
@@ -120,32 +120,40 @@ impl PointerData {
         }
     }
 
-    fn test_interactions(&mut self, sk: &SkDraw, interactables: &mut [OverlayData]) {
+    fn test_interactions(&mut self, hmd: &Pose, sk: &SkDraw, interactables: &mut [OverlayData]) {
         // Grabbing an overlay
         if let Some(grabbed_idx) = self.grabbed_idx {
             let grabbed = &mut interactables[grabbed_idx];
             if grabbed.primary_pointer != Some(self.hand) {
+                debug!("Pointer {}: Grab lost on {}", self.hand, grabbed.name);
                 self.grabbed_idx = None;
                 // ignore and continue
             } else if !self.now.grab {
+                debug!("Pointer {}: Dropped {}", self.hand, grabbed.name);
                 self.grabbed_idx = None;
                 grabbed.on_drop();
                 // drop and continue
             } else {
                 if self.now.scroll.abs() > 0.1 {
                     if self.mode == POINTER_ALT {
+                        debug!("Pointer {}: Resize {}", self.hand, grabbed.name);
                         grabbed.on_size(self.now.scroll);
                     } else {
+                        debug!("Pointer {}: Push/pull {}", self.hand, grabbed.name);
                         let offset = self.grabbed_offset
-                            + self.grabbed_offset.normalize_or_zero() * self.now.scroll.powi(2);
+                            + self.grabbed_offset.normalize_or_zero() * self.now.scroll * 0.2;
                         let len_sq = offset.length_squared();
-                        if len_sq > 0.09 && len_sq < 100. {
+                        if len_sq > 0.20 && len_sq < 100. {
                             self.grabbed_offset = offset;
                         }
                     }
                 }
-                grabbed.on_move(self.pose.position + self.pose.forward() * self.grabbed_offset);
+                let mat = Affine3A::from_rotation_translation(self.pose.orientation, self.pose.position);
+                sk.hierarchy_push(mat);
+                grabbed.on_move(sk.hierarchy_to_world_point(self.grabbed_offset), &hmd);
+                sk.hierarchy_pop();
                 if self.now.click && !self.before.click {
+                    debug!("Pointer {}: on_curve {}", self.hand, grabbed.name);
                     grabbed.on_curve();
                 }
                 return;
@@ -191,10 +199,11 @@ impl PointerData {
             // Invoke on_left
             if let Some(hovered_idx) = self.hovered_idx {
                 if hovered_idx != now_idx {
-                    let obj = &mut interactables[hovered_idx];
-                    if obj.primary_pointer == Some(self.hand) {
-                        obj.primary_pointer = None;
-                        obj.interaction.on_left(self.hand);
+                    let hovered = &mut interactables[hovered_idx];
+                    if hovered.primary_pointer == Some(self.hand) {
+                        hovered.primary_pointer = None;
+                        debug!("Pointer {}: on_left {}", self.hand, hovered.name);
+                        hovered.interaction.on_left(self.hand);
                     }
                 }
             }
@@ -205,8 +214,12 @@ impl PointerData {
             // grab start
             if self.now.grab && !self.before.grab {
                 overlay.primary_pointer = Some(self.hand);
-                let mat = Affine3A::from_rotation_translation(self.pose.orientation, self.pose.position).inverse();
-                self.grabbed_offset = mat.transform_point3(overlay.transform.translation.into());
+                let mat = Affine3A::from_rotation_translation(self.pose.orientation, self.pose.position);
+                sk.hierarchy_push(mat);
+                self.grabbed_offset = sk.hierarchy_to_local_point(overlay.transform.translation);
+                sk.hierarchy_pop();
+                self.grabbed_idx = Some(now_idx);
+                debug!("Pointer {}: Grabbed {}", self.hand, overlay.name);
                 return;
             }
 

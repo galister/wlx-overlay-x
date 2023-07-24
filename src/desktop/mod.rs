@@ -1,9 +1,11 @@
 use std::{path::Path, fs::read_to_string, time::{Instant, Duration}, sync::MutexGuard};
 
-use glam::{Affine2, Vec2, vec2};
+use glam::{Affine2, Vec2, vec2, Affine3A};
 use log::{info, warn};
 
 use crate::{overlay::{OverlayData, OverlayRenderer}, desktop::capture::{wlr_dmabuf_capture::WlrDmabufCapture, pw_capture::pipewire_select_screen}, session::SESSION, interactions::{InteractionHandler, PointerHit, POINTER_SHIFT, POINTER_ALT}, input::{INPUT, InputProvider, MOUSE_RIGHT, MOUSE_MIDDLE}};
+
+use stereokit::Pose;
 
 use self::wl_client::WlClientState;
 
@@ -26,7 +28,7 @@ impl ScreenInteractionHandler {
                 vec2(size.0 as _, size.1 as _),
                 0.,
                 vec2(pos.0 as _, pos.1 as _),
-            ).inverse()
+            )
         }
     }
 
@@ -119,9 +121,11 @@ pub async fn maybe_create_screen(wl: &WlClientState, idx: usize) -> Option<Overl
     }
 
     Some(OverlayData {
+        name: output.name.clone(),
         size,
         renderer: capture.unwrap(),
-        interaction: Box::new(ScreenInteractionHandler::new(output.size, output.pos)),
+        interaction: Box::new(ScreenInteractionHandler::new(output.logical_pos, output.logical_size)),
         ..Default::default()
     })
 }
+

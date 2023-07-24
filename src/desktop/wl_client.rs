@@ -43,7 +43,6 @@ pub struct OutputState {
     pub id: u32,
     pub name: String,
     pub model: String,
-    pub pos: (i32, i32),
     pub size: (i32, i32),
     pub logical_pos: (i32, i32),
     pub logical_size: (i32, i32),
@@ -94,7 +93,6 @@ impl WlClientState {
                     id: o.name,
                     name: String::new(),
                     model: String::new(),
-                    pos: (0, 0),
                     size: (0, 0),
                     logical_pos: (0, 0),
                     logical_size: (0, 0),
@@ -224,7 +222,6 @@ impl Dispatch<WlOutput, u32> for WlClientState {
                 if let Some(output) = state.outputs.iter_mut().find(|o| o.id == *data) {
                     output.model = model;
                     output.transform = transform;
-                    output.pos = (x, y);
                 }
             }
             _ => {}
