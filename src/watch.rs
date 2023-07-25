@@ -4,7 +4,7 @@ use chrono::Local;
 use glam::{vec2, Affine3A, Quat, Vec3};
 use stereokit::{Pose, StereoKitMultiThread, StereoKitSingleThread};
 
-use crate::session::SESSION;
+use crate::AppSession;
 
 pub const WATCH_DEFAULT_POS: Vec3 = Vec3::new(0., -0.05, 0.05);
 pub const WATCH_DEFAULT_ROT: Quat = Quat::from_xyzw(0., 1., 0., 0.);
@@ -15,17 +15,14 @@ pub struct WatchPanel {
 }
 
 impl WatchPanel {
-    pub fn new() -> WatchPanel {
-        if let Ok(session) = SESSION.lock() {
-            return WatchPanel {
-                hand: session.watch_hand,
-                transform: Affine3A::from_rotation_translation(
-                    session.watch_rot,
-                    session.watch_pos,
-                ),
-            };
-        }
-        panic!("Could not get session.");
+    pub fn new(session: &AppSession) -> WatchPanel {
+        return WatchPanel {
+            hand: session.watch_hand,
+            transform: Affine3A::from_rotation_translation(
+                session.watch_rot,
+                session.watch_pos,
+            ),
+        };
     }
 
     pub fn render(&mut self, sk: &stereokit::SkDraw) {

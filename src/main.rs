@@ -1,4 +1,4 @@
-use std::{fs::create_dir, path::Path, sync::Mutex};
+use std::{fs::create_dir, path::Path};
 
 use desktop::{wl_client::WlClientState, maybe_create_screen};
 use gl::{egl::gl_init, GlRenderer};
@@ -16,12 +16,9 @@ mod gl;
 mod input;
 mod interactions;
 mod overlay;
-mod session;
 mod watch;
 
-pub static SESSION: Lazy<Mutex<WlXrSession>> = Lazy::new(|| Mutex::new(WlXrSession::load()));
-
-pub struct WlXrSession {
+pub struct AppSession {
     pub config_path: String,
 
     pub screen_flip_h: bool,
@@ -33,8 +30,8 @@ pub struct WlXrSession {
     pub watch_rot: Quat,
 }
 
-impl WlXrSession {
-    pub fn load() -> WlXrSession {
+impl AppSession {
+    pub fn load() -> AppSession {
         let config_path: String;
 
         if let Ok(home) = std::env::var("HOME") {
@@ -49,7 +46,7 @@ impl WlXrSession {
         }
         let _ = create_dir(&config_path);
 
-        WlXrSession {
+        AppSession {
             config_path,
             screen_flip_h: false,
             screen_flip_v: false,
@@ -64,6 +61,7 @@ impl WlXrSession {
 pub struct AppState {
     gl: GlRenderer,
     input: InputState,
+    session: AppSession,
 }
 
 #[tokio::main]
@@ -83,6 +81,8 @@ async fn main() {
 
     env_logger::init();
 
+    let session = AppSession::load();
+
     gl_init(&sk);
 
     let mut overlays: Vec<OverlayData> = vec![];
@@ -94,18 +94,19 @@ async fn main() {
 
     for i in 0..wl.outputs.len() {
         let want_visible = wl.outputs[i].name == "DP-1";
-        if let Some(mut screen) = maybe_create_screen(&wl, i).await {
+        if let Some(mut screen) = maybe_create_screen(&wl, i, &session).await {
             screen.want_visible = want_visible;
             overlays.push(screen);
         }
     }
 
+    let mut watch = WatchPanel::new(&session);
+
     let mut app = Lazy::new(|| AppState {
         gl: GlRenderer::new(),
         input: InputState::new(),
+        session,
     });
-
-    let mut watch = WatchPanel::new();
 
     sk.run(
         |sk| {
@@ -115,7 +116,7 @@ async fn main() {
 
             for screen in overlays.iter_mut() {
                 if screen.want_visible && !screen.visible {
-                    screen.show(sk);
+                    screen.show(sk, &app);
                 }
 
                 screen.render(sk, &mut app);

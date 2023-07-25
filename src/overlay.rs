@@ -1,13 +1,13 @@
 use std::f32::consts::PI;
 
-use glam::{vec2, vec3, Affine3A, Quat, Vec3, Vec3A};
+use glam::{vec2, vec3, Affine3A, Quat, Vec3, Vec3A, Mat3A};
 use log::{debug, info};
 use stereokit::{
     sys::color32, Color128, Material, Mesh, RenderLayer, SkDraw, StereoKitMultiThread, Tex,
     TextureFormat, TextureType, Vert, StereoKitDraw, Pose,
 };
 
-use crate::{interactions::{InteractionHandler, DummyInteractionHandler}, session::SESSION, AppState};
+use crate::{interactions::{InteractionHandler, DummyInteractionHandler}, AppState};
 
 pub const COLOR_WHITE: Color128 = Color128 {
     r: 1.,
@@ -52,7 +52,7 @@ pub trait OverlayRenderer {
 
 impl OverlayData {
 
-    pub fn show(&mut self, sk: &SkDraw) {
+    pub fn show(&mut self, sk: &SkDraw, app: &AppState) {
         if self.visible {
             return;
         }
@@ -100,15 +100,13 @@ impl OverlayData {
             let mut y0 = 0f32;
             let mut y1 = 1f32;
 
-            if let Ok(session) = SESSION.lock() {
-                if session.screen_flip_h {
-                    x0 = 1.;
-                    x1 = 0.;
-                }
-                if session.screen_flip_v {
-                    y0 = 1.;
-                    y1 = 0.;
-                }
+            if app.session.screen_flip_h {
+                x0 = 1.;
+                x1 = 0.;
+            }
+            if app.session.screen_flip_v {
+                y0 = 1.;
+                y1 = 0.;
             }
 
             #[rustfmt::skip]
@@ -224,12 +222,14 @@ impl OverlayData {
         }
 
         let scale = self.transform.x_axis.length();
-        let translation = self.transform.translation.clone();
 
-        let mut t = Affine3A::look_at_rh(self.transform.translation.into(), hmd.translation.into(), up_dir.into());
-        t.matrix3 = t.matrix3.mul_scalar(scale);
-        t.translation = translation;
-        self.transform = t;
+        let col_z = (self.transform.translation - hmd.translation).normalize();
+        let col_y = up_dir;
+        let col_x = col_y.cross(col_z);
+        let col_y = col_z.cross(col_x).normalize();
+        let col_x = col_x.normalize();
+
+        self.transform.matrix3 = Mat3A::from_cols(col_x, col_y, col_z).mul_scalar(scale);
     }
 }
 

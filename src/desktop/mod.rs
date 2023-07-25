@@ -1,11 +1,9 @@
 use std::{path::Path, fs::read_to_string, time::{Instant, Duration}, sync::MutexGuard};
 
-use glam::{Affine2, Vec2, vec2, Affine3A};
+use glam::{Affine2, Vec2, vec2};
 use log::{info, warn};
 
-use crate::{overlay::{OverlayData, OverlayRenderer}, desktop::capture::{wlr_dmabuf_capture::WlrDmabufCapture, pw_capture::pipewire_select_screen}, session::SESSION, interactions::{InteractionHandler, PointerHit, POINTER_SHIFT, POINTER_ALT}, input::{INPUT, InputProvider, MOUSE_RIGHT, MOUSE_MIDDLE}};
-
-use stereokit::Pose;
+use crate::{overlay::{OverlayData, OverlayRenderer}, desktop::capture::{wlr_dmabuf_capture::WlrDmabufCapture, pw_capture::pipewire_select_screen}, interactions::{InteractionHandler, PointerHit, POINTER_SHIFT, POINTER_ALT}, input::{INPUT, InputProvider, MOUSE_RIGHT, MOUSE_MIDDLE}, AppSession};
 
 use self::wl_client::WlClientState;
 
@@ -84,7 +82,7 @@ impl InteractionHandler for ScreenInteractionHandler {
     fn on_left(&mut self, _hand: usize) { }
 }
 
-pub async fn maybe_create_screen(wl: &WlClientState, idx: usize) -> Option<OverlayData> {
+pub async fn maybe_create_screen(wl: &WlClientState, idx: usize, session: &AppSession) -> Option<OverlayData> {
     let output = &wl.outputs[idx];
     info!(
         "{}: Res {}x{} Size {}x{} Pos {}x{}",
@@ -105,16 +103,14 @@ pub async fn maybe_create_screen(wl: &WlClientState, idx: usize) -> Option<Overl
         let wl = WlClientState::new();
         capture = WlrDmabufCapture::try_new(wl, &output);
     } else {
-        if let Ok(session) = SESSION.lock() {
-            info!("{}: Using Pipewire capture", &output.name);
-            let file_name = format!("{}.token", &output.name);
-            let full_path = Path::new(&session.config_path).join(file_name);
-            let token = read_to_string(full_path).ok();
+        info!("{}: Using Pipewire capture", &output.name);
+        let file_name = format!("{}.token", &output.name);
+        let full_path = Path::new(&session.config_path).join(file_name);
+        let token = read_to_string(full_path).ok();
 
-            if let Ok(node_id) = pipewire_select_screen(token.as_deref()).await {
-                info!("Node id: {}", node_id);
-                todo!();
-            }
+        if let Ok(node_id) = pipewire_select_screen(token.as_deref()).await {
+            info!("Node id: {}", node_id);
+            todo!();
         }
         warn!("{}: Will not be used", &output.name);
         return None;
