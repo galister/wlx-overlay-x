@@ -47,14 +47,14 @@ pub struct OverlayGraphics {
 }
 
 pub trait OverlayRenderer {
-    fn init(&mut self, sk: &SkDraw);
+    fn init(&mut self, sk: &SkDraw, app: &mut AppState);
     fn pause(&mut self, app: &mut AppState);
     fn resume(&mut self, app: &mut AppState);
     fn render(&mut self, sk: &SkDraw, tex: &Tex, app: &mut AppState);
 }
 
 impl OverlayData {
-    pub fn show(&mut self, sk: &SkDraw, app: &AppState) {
+    pub fn show(&mut self, sk: &SkDraw, app: &mut AppState) {
         if self.visible {
             return;
         }
@@ -128,7 +128,7 @@ impl OverlayData {
 
             self.gfx = Some(OverlayGraphics { tex, mat, mesh });
 
-            self.renderer.init(sk);
+            self.renderer.init(sk, app);
         }
 
         debug!(
@@ -256,7 +256,7 @@ impl Default for OverlayData {
 pub struct FallbackRenderer;
 
 impl OverlayRenderer for FallbackRenderer {
-    fn init(&mut self, _sk: &SkDraw) {}
+    fn init(&mut self, _sk: &SkDraw, _app: &mut AppState) {}
     fn pause(&mut self, _app: &mut AppState) {}
     fn resume(&mut self, _app: &mut AppState) {}
     fn render(&mut self, sk: &SkDraw, tex: &Tex, app: &mut AppState) {

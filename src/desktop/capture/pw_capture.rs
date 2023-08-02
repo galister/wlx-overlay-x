@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::{Mutex, RwLock};
 use std::thread::JoinHandle;
 
+use crate::AppState;
 use crate::desktop::frame::{
     texture_load_dmabuf, texture_load_memfd, texture_load_memptr, MemPtrFrame,
 };
@@ -97,7 +98,7 @@ pub struct PipewireCapture {
 }
 
 impl OverlayRenderer for PipewireCapture {
-    fn init(&mut self, _sk: &stereokit::SkDraw) {
+    fn init(&mut self, _sk: &stereokit::SkDraw, _app: &mut AppState) {
         self.start();
     }
     fn pause(&mut self, _app: &mut crate::AppState) {}

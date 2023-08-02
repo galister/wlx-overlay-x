@@ -559,13 +559,13 @@ impl GlRenderer {
         self.vao.vbo.data(&self.vertices);
     }
 
-    pub fn srgb_correction(&mut self, texture: u32) {
+    pub fn draw_sprite_full(&mut self, texture: u32) {
         self.use_rect(0., 0., self.width as _, self.height as _);
         self.vao.bind();
 
-        self.shader_srgb.use_shader();
+        self.shader_sprite.use_shader();
 
-        let location = self.shader_srgb.locations[UNIFORM_TEX0];
+        let location = self.shader_sprite.locations[UNIFORM_TEX0];
         debug_assert_ne!(location, -1);
 
         unsafe {
@@ -617,6 +617,36 @@ impl GlRenderer {
         let location = self.shader_color.locations[UNIFORM_COL0];
         unsafe {
             glUniform4f(location, color.x, color.y, color.z, 1.);
+            debug_assert_eq!(glGetError(), GL_NO_ERROR);
+
+            glDrawElements(
+                GL_TRIANGLES,
+                self.indices.len() as _,
+                GL_UNSIGNED_INT,
+                null(),
+            );
+            debug_assert_eq!(glGetError(), GL_NO_ERROR);
+        }
+    }
+
+    pub fn draw_glyph(&mut self, texture: u32, x: f32, y: f32, w: f32, h: f32) {
+        self.use_rect(x, y, w, h);
+
+        self.vao.bind();
+        self.shader_glyph.use_shader();
+        let tex0 = self.shader_glyph.locations[UNIFORM_TEX0];
+        debug_assert_ne!(tex0, -1);
+        let col0 = self.shader_glyph.locations[UNIFORM_COL0];
+        debug_assert_ne!(col0, -1);
+
+        unsafe {
+            glBindTexture(GL_TEXTURE_2D, texture);
+            debug_assert_eq!(glGetError(), GL_NO_ERROR);
+            glBlendFunc(GL_ONE, GL_ZERO);
+            glUniform1i(tex0, 0);
+            debug_assert_eq!(glGetError(), GL_NO_ERROR);
+
+            glUniform4f(col0, 1., 1., 1., 1.);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
             glDrawElements(

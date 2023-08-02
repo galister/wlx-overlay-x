@@ -41,7 +41,7 @@ impl WlrDmabufCapture {
 }
 
 impl OverlayRenderer for WlrDmabufCapture {
-    fn init(&mut self, _sk: &stereokit::SkDraw) {}
+    fn init(&mut self, _sk: &stereokit::SkDraw, _app: &mut AppState) {}
     fn pause(&mut self, app: &mut AppState) {
         if self.task_handle.is_some() {
             let handle = self.task_handle.take().unwrap();

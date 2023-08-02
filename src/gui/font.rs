@@ -28,11 +28,13 @@ struct Font {
     glyphs: IdMap<usize, Rc<Glyph>>,
 }
 
-struct Glyph {
-    tex: Option<Tex>,
-    top: i32,
-    left: i32,
-    advance: i32,
+pub struct Glyph {
+    pub tex: Option<Tex>,
+    pub top: f32,
+    pub left: f32,
+    pub width: f32,
+    pub height: f32,
+    pub advance: f32,
 }
 
 impl FontCache {
@@ -47,18 +49,22 @@ impl FontCache {
         }
     }
 
-    pub fn get_text_size(&mut self, text: &str, size: isize, sk: &SkDraw) -> i32 {
-        let mut max = (size as i32) / 3;
+    pub fn get_text_size(&mut self, text: &str, size: isize, sk: &SkDraw) -> (f32, f32) {
+        let sizef = size as f32;
+
+        let height = sizef + ((text.lines().count() as f32) - 1f32) * (sizef * 1.5);
+
+        let mut max_w = sizef * 0.33;
         for line in text.lines() {
-            let w : i32 = line.chars().map(|c| { 
+            let w : f32 = line.chars().map(|c| { 
                 self.get_glyph_for_cp(c as usize, size, sk).advance 
             }).sum();
 
-            if w > max {
-                max = w;
+            if w > max_w {
+                max_w = w;
             }
         }
-        max
+        (max_w, height)
     }
 
     pub fn get_glyphs(&mut self, text: &str, size: isize, sk: &SkDraw) -> Vec<Rc<Glyph>> {
@@ -113,9 +119,11 @@ impl FontCache {
 
             let zero_glyph = Rc::new(Glyph {
                 tex: None,
-                top: 0,
-                left: 0,
-                advance: size as i32 / 3,
+                top: 0.,
+                left: 0.,
+                width: 0.,
+                height: 0.,
+                advance: size as f32 / 3.,
             });
             let mut glyphs = IdMap::new();
             glyphs.insert(0, zero_glyph);
@@ -186,9 +194,11 @@ impl FontCache {
      
         let g = Glyph { 
             tex: Some(tex),
-            top: (bmp.rows() as i32) - (metrics.horiBearingY as i32 >> 6),
-            left: metrics.horiBearingX as i32 >> 6,
-            advance: metrics.horiAdvance as i32 >> 6,
+            top: ((bmp.rows() as i64) - (metrics.horiBearingY >> 6i64)) as _,
+            left: (metrics.horiBearingX >> 6i64) as _,
+            advance: (metrics.horiAdvance >> 6i64) as _,
+            width: bmp.width() as _,
+            height: bmp.rows() as _,
         };
 
         font.glyphs.insert(cp, Rc::new(g));

@@ -172,7 +172,7 @@ fn main() {
 
             for screen in overlays.iter_mut() {
                 if screen.want_visible && !screen.visible {
-                    screen.show(sk, &app);
+                    screen.show(sk, &mut app);
                 }
 
                 screen.render(sk, &mut app);
