@@ -144,7 +144,7 @@ impl InputProvider for UInputProvider {
             new_event(time, EV_SYN, 0, 0),
         ];
         if let Err(res) = self.handle.write(&events) {
-            error!("{}", res.to_string()); 
+            error!("{}", res.to_string());
         }
     }
     fn send_button(&self, button: u16, down: bool) {
@@ -154,7 +154,7 @@ impl InputProvider for UInputProvider {
             new_event(time, EV_SYN, 0, 0),
         ];
         if let Err(res) = self.handle.write(&events) {
-            error!("{}", res.to_string()); 
+            error!("{}", res.to_string());
         }
     }
     fn wheel(&self, delta: i32) {
@@ -164,7 +164,7 @@ impl InputProvider for UInputProvider {
             new_event(time, EV_SYN, 0, 0),
         ];
         if let Err(res) = self.handle.write(&events) {
-            error!("{}", res.to_string()); 
+            error!("{}", res.to_string());
         }
     }
     fn set_modifiers(&self) {}
@@ -175,7 +175,7 @@ impl InputProvider for UInputProvider {
             new_event(time, EV_SYN, 0, 0),
         ];
         if let Err(res) = self.handle.write(&events) {
-            error!("{}", res.to_string()); 
+            error!("{}", res.to_string());
         }
     }
     fn set_desktop_extent(&mut self, extent: [i32; 2]) {

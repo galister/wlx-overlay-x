@@ -1,17 +1,21 @@
+use std::sync::{Arc, Mutex};
+
 use crate::{
     desktop::{
-        frame::{texture_load_dmabuf, FRAME_FAILED, FRAME_PENDING, FRAME_READY},
+        frame::{texture_load_dmabuf, DmabufFrame, FRAME_FAILED, FRAME_READY},
         wl_client::{OutputState, WlClientState},
     },
-    overlay::{COLOR_FALLBACK, OverlayRenderer}, AppState,
+    overlay::OverlayRenderer,
+    AppState,
 };
 use log::warn;
-use stereokit::{StereoKitMultiThread, Tex, TextureFormat, TextureType};
+use stereokit::StereoKitMultiThread;
+use tokio::task::JoinHandle;
 
 pub struct WlrDmabufCapture {
     output_idx: usize,
-    wl: WlClientState,
-    staging_tex: Option<Tex>,
+    wl: Arc<Mutex<WlClientState>>,
+    task_handle: Option<JoinHandle<Arc<Mutex<DmabufFrame>>>>,
 }
 
 impl WlrDmabufCapture {
@@ -26,9 +30,9 @@ impl WlrDmabufCapture {
 
         if let Some(output_idx) = output_idx {
             Some(Box::new(WlrDmabufCapture {
-                wl,
                 output_idx,
-                staging_tex: None,
+                wl: Arc::new(Mutex::new(wl)),
+                task_handle: None,
             }))
         } else {
             None
@@ -37,40 +41,51 @@ impl WlrDmabufCapture {
 }
 
 impl OverlayRenderer for WlrDmabufCapture {
-    fn init(&mut self, sk: &stereokit::SkDraw) {
-        let size = self.wl.outputs[self.output_idx].size;
-        self.staging_tex = Some(sk.tex_gen_color(
-            COLOR_FALLBACK,
-            size.0,
-            size.1,
-            TextureType::IMAGE_NO_MIPS,
-            TextureFormat::RGBA32,
-        ));
+    fn init(&mut self, _sk: &stereokit::SkDraw) {}
+    fn pause(&mut self, app: &mut AppState) {
+        if self.task_handle.is_some() {
+            let handle = self.task_handle.take().unwrap();
+            let _ = app.rt.block_on(async { handle.await });
+        }
     }
-    fn pause(&mut self) {}
-    fn resume(&mut self) {}
+    fn resume(&mut self, _app: &mut AppState) {}
     fn render(&mut self, sk: &stereokit::SkDraw, tex: &stereokit::Tex, app: &mut AppState) {
-        if let Some(mutex) = self.wl.request_dmabuf_frame(self.output_idx) {
-            if let Ok(frame) = mutex.lock() {
-                match frame.status {
-                    FRAME_PENDING => {
-                        warn!("[Dmabuf] Frame not ready to present");
-                        return;
+        if let Some(handle) = &self.task_handle {
+            if handle.is_finished() {
+                let handle = self.task_handle.take().unwrap();
+
+                if let Ok(mutex) = app.rt.block_on(async { handle.await }) {
+                    if let Ok(frame) = mutex.lock() {
+                        match frame.status {
+                            FRAME_FAILED => {
+                                warn!("[Dmabuf] Frame capture failed");
+                            }
+                            FRAME_READY => {
+                                if frame.is_valid() {
+                                    let handle = unsafe {
+                                        sk.tex_get_surface(&tex.as_ref()) as usize as u32
+                                    };
+                                    texture_load_dmabuf(handle, &frame);
+                                }
+                            }
+                            _ => {}
+                        }
                     }
-                    FRAME_FAILED => {
-                        warn!("[Dmabuf] Frame capture failed");
-                    }
-                    FRAME_READY => {
-                        let handle =
-                            unsafe { sk.tex_get_surface(self.staging_tex.as_ref().unwrap()) as usize as u32 };
-                        texture_load_dmabuf(handle, &frame);
-                        app.gl.begin_sk(sk, &tex);
-                        app.gl.srgb_correction(handle);
-                        app.gl.end();
-                    }
-                    _ => {}
                 }
+            } else {
+                warn!("[Dmabuf] Frame not ready to present");
+                return;
             }
         }
+
+        let wl = self.wl.clone();
+        let output_idx = self.output_idx;
+        self.task_handle = Some(app.rt.spawn(async move {
+            let frame = Arc::new(Mutex::new(DmabufFrame::default()));
+            if let Ok(mut wl) = wl.lock() {
+                wl.request_dmabuf_frame(output_idx, frame.clone());
+            }
+            frame
+        }));
     }
 }

@@ -12,16 +12,15 @@ pub const WATCH_DEFAULT_ROT: Quat = Quat::from_xyzw(0., 1., 0., 0.);
 pub struct WatchPanel {
     pub transform: Affine3A,
     pub hand: u32,
+    pushed: bool,
 }
 
 impl WatchPanel {
     pub fn new(session: &AppSession) -> WatchPanel {
         return WatchPanel {
             hand: session.watch_hand,
-            transform: Affine3A::from_rotation_translation(
-                session.watch_rot,
-                session.watch_pos,
-            ),
+            transform: Affine3A::from_rotation_translation(session.watch_rot, session.watch_pos),
+            pushed: false,
         };
     }
 
@@ -43,6 +42,15 @@ impl WatchPanel {
 
                 ui.label(format!("{}", &date.format("%H:%M")), true);
                 ui.label(format!("{}", &date.format("%b %d")), true);
+                let now = ui.button("Push");
+                if self.pushed != now {
+                    self.pushed = now;
+                    if now {
+                        sk.log_info("Pushed!");
+                    } else {
+                        sk.log_info("Released!");
+                    }
+                }
             },
         );
 

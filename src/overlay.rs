@@ -1,13 +1,16 @@
 use std::f32::consts::PI;
 
-use glam::{vec2, vec3, Affine3A, Quat, Vec3, Vec3A, Mat3A};
+use glam::{vec2, vec3, Affine3A, Mat3A, Quat, Vec3, Vec3A};
 use log::{debug, info};
 use stereokit::{
-    sys::color32, Color128, Material, Mesh, RenderLayer, SkDraw, StereoKitMultiThread, Tex,
-    TextureFormat, TextureType, Vert, StereoKitDraw, Pose,
+    sys::color32, Color128, Material, Mesh, Pose, RenderLayer, SkDraw, StereoKitDraw,
+    StereoKitMultiThread, Tex, TextureFormat, TextureType, Vert,
 };
 
-use crate::{interactions::{InteractionHandler, DummyInteractionHandler}, AppState};
+use crate::{
+    interactions::{DummyInteractionHandler, InteractionHandler},
+    AppState,
+};
 
 pub const COLOR_WHITE: Color128 = Color128 {
     r: 1.,
@@ -45,13 +48,12 @@ pub struct OverlayGraphics {
 
 pub trait OverlayRenderer {
     fn init(&mut self, sk: &SkDraw);
-    fn pause(&mut self);
-    fn resume(&mut self);
+    fn pause(&mut self, app: &mut AppState);
+    fn resume(&mut self, app: &mut AppState);
     fn render(&mut self, sk: &SkDraw, tex: &Tex, app: &mut AppState);
 }
 
 impl OverlayData {
-
     pub fn show(&mut self, sk: &SkDraw, app: &AppState) {
         if self.visible {
             return;
@@ -121,7 +123,7 @@ impl OverlayData {
             sk.mesh_set_verts(&mesh, &verts, true);
             sk.mesh_set_inds(&mesh, &inds);
 
-            let mat = sk.material_copy(Material::UNLIT);
+            let mat = sk.material_create(&app.panel_shader);
             sk.material_set_texture(&mat, "diffuse", &tex);
 
             self.gfx = Some(OverlayGraphics { tex, mat, mesh });
@@ -151,10 +153,6 @@ impl OverlayData {
         if !self.visible {
             return;
         }
-
-        let m = Affine3A::from_rotation_translation(app.input.hmd.orientation, app.input.hmd.position);
-        debug!("{}", m.y_axis);
-        debug!("{}", m.transform_vector3a(Vec3A::Y));
 
         if let Some(gfx) = self.gfx.as_mut() {
             self.renderer.render(sk, &gfx.tex, app);
@@ -192,9 +190,7 @@ impl OverlayData {
         // TODO save position
     }
 
-    pub fn on_curve(&mut self) {
-
-    }
+    pub fn on_curve(&mut self) {}
 
     pub fn realign(&mut self, hmd_pose: &Pose) {
         let hmd = Affine3A::from_rotation_translation(hmd_pose.orientation, hmd_pose.position);
@@ -210,13 +206,16 @@ impl OverlayData {
             let y_dist = (self.transform.translation.y - hmd.translation.y).abs();
             let x_angle = (y_dist / z_dist).asin();
 
-            if dot < -f32::EPSILON { // facing down
+            if dot < -f32::EPSILON {
+                // facing down
                 let up_point = hmd.translation + z_dist / x_angle.cos() * Vec3A::Y;
                 up_dir = (up_point - self.transform.translation).normalize();
-            } else if dot > f32::EPSILON { // facing up
+            } else if dot > f32::EPSILON {
+                // facing up
                 let dn_point = hmd.translation + z_dist / x_angle.cos() * Vec3A::NEG_Y;
                 up_dir = (self.transform.translation - dn_point).normalize();
-            } else { // perfectly upright
+            } else {
+                // perfectly upright
                 up_dir = Vec3A::Y;
             }
         }
@@ -258,8 +257,8 @@ pub struct FallbackRenderer;
 
 impl OverlayRenderer for FallbackRenderer {
     fn init(&mut self, _sk: &SkDraw) {}
-    fn pause(&mut self) {}
-    fn resume(&mut self) {}
+    fn pause(&mut self, _app: &mut AppState) {}
+    fn resume(&mut self, _app: &mut AppState) {}
     fn render(&mut self, sk: &SkDraw, tex: &Tex, app: &mut AppState) {
         app.gl.begin_sk(sk, tex);
         app.gl.draw_color(
@@ -272,4 +271,3 @@ impl OverlayRenderer for FallbackRenderer {
         app.gl.end();
     }
 }
-

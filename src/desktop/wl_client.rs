@@ -1,19 +1,17 @@
 use log::warn;
 use std::cmp::max;
 use std::os::fd::IntoRawFd;
-use std::sync::Mutex;
-use std::{cell::RefCell, rc::Rc, sync::Arc};
+use std::sync::{Arc, Mutex};
 
 use smithay_client_toolkit::reexports::{
     protocols::xdg::xdg_output::zv1::client::{
         zxdg_output_manager_v1::ZxdgOutputManagerV1,
         zxdg_output_v1::{self, ZxdgOutputV1},
     },
-    protocols_wlr::
-        export_dmabuf::v1::client::{
-            zwlr_export_dmabuf_frame_v1::{self, ZwlrExportDmabufFrameV1},
-            zwlr_export_dmabuf_manager_v1::ZwlrExportDmabufManagerV1,
-        },
+    protocols_wlr::export_dmabuf::v1::client::{
+        zwlr_export_dmabuf_frame_v1::{self, ZwlrExportDmabufFrameV1},
+        zwlr_export_dmabuf_manager_v1::ZwlrExportDmabufManagerV1,
+    },
 };
 use wayland_client::{
     globals::{registry_queue_init, GlobalListContents},
@@ -46,7 +44,7 @@ pub struct WlClientState {
     pub maybe_wlr_dmabuf_mgr: Option<ZwlrExportDmabufManagerV1>,
     pub outputs: Vec<OutputState>,
     pub desktop_rect: (i32, i32),
-    pub queue: Rc<RefCell<EventQueue<Self>>>,
+    pub queue: Arc<Mutex<EventQueue<Self>>>,
     pub queue_handle: QueueHandle<Self>,
 }
 
@@ -64,7 +62,7 @@ impl WlClientState {
             maybe_wlr_dmabuf_mgr: globals.bind(&qh, 1..=1, ()).ok(),
             outputs: vec![],
             desktop_rect: (0, 0),
-            queue: Rc::new(RefCell::new(queue)),
+            queue: Arc::new(Mutex::new(queue)),
             queue_handle: qh.clone(),
         };
 
@@ -104,28 +102,23 @@ impl WlClientState {
         extent
     }
 
-    pub fn request_dmabuf_frame(&mut self, output_idx: usize) -> Option<Arc<Mutex<DmabufFrame>>> {
-        let data = Arc::new(Mutex::new(DmabufFrame::new()));
-
+    pub fn request_dmabuf_frame(&mut self, output_idx: usize, frame: Arc<Mutex<DmabufFrame>>) {
         if let Some(dmabuf_manager) = self.maybe_wlr_dmabuf_mgr.as_ref() {
             let _ = dmabuf_manager.capture_output(
                 1,
                 &self.outputs[output_idx].wl_output,
                 &self.queue_handle,
-                data.clone(),
+                frame,
             );
 
             self.dispatch();
-
-            return Some(data);
         }
-        None
     }
 
     pub fn dispatch(&mut self) {
-        let queue = self.queue.clone();
-        let mut queue_mut = queue.borrow_mut();
-        let _ = queue_mut.blocking_dispatch(self);
+        if let Ok(mut queue_mut) = self.queue.clone().lock() {
+            let _ = queue_mut.blocking_dispatch(self);
+        }
     }
 }
 
@@ -315,4 +308,3 @@ impl Dispatch<WlRegistry, GlobalListContents> for WlClientState {
     ) {
     }
 }
-

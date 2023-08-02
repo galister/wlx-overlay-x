@@ -1,20 +1,20 @@
 use std::{
     mem::MaybeUninit,
-    os::fd::{AsRawFd, RawFd},
+    os::fd::RawFd,
     ptr,
 };
 
 use gles31::{
     glBindBuffer, glBindTexture, glGetError, glPixelStorei, glTexImage2D, GL_NO_ERROR,
     GL_PIXEL_UNPACK_BUFFER, GL_RGBA, GL_RGBA8, GL_TEXTURE_2D, GL_UNPACK_ALIGNMENT,
-    GL_UNSIGNED_BYTE,
+    GL_UNSIGNED_BYTE, 
 };
 use libc::{close, mmap, munmap, MAP_SHARED, PROT_READ};
-use wayland_client::protocol::{wl_buffer::WlBuffer, wl_shm::Format, wl_shm_pool::WlShmPool};
+use log::{debug};
 
 use crate::gl::egl::{
     eglCreateImage, eglDestroyImage, eglGetError, glEGLImageTargetTexture2DOES,
-    EGL_LINUX_DMABUF_EXT, EGL_SUCCESS,
+    EGL_LINUX_DMABUF_EXT, EGL_SUCCESS, DRM_FORMAT_ARGB8888, DRM_FORMAT_XRGB8888, DRM_FORMAT_XBGR8888, DRM_FORMAT_ABGR8888,
 };
 
 #[rustfmt::skip]
@@ -34,16 +34,17 @@ pub const FRAME_FAILED: i32 = -1;
 pub struct FrameFormat {
     pub w: u32,
     pub h: u32,
-    pub size: usize,
     pub modifier: u64,
     pub format: u32,
 }
 
-impl FrameFormat {
-    pub fn new() -> Self {
+impl Default for FrameFormat {
+    fn default() -> Self {
         unsafe { MaybeUninit::<Self>::zeroed().assume_init() }
     }
+}
 
+impl FrameFormat {
     pub fn get_mod_hi(&self) -> u32 {
         (self.modifier >> 32) as _
     }
@@ -55,22 +56,23 @@ impl FrameFormat {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct FramePlane {
     pub fd: RawFd,
     pub offset: u32,
     pub stride: i32,
 }
 
-impl FramePlane {
-    pub fn new() -> Self {
+impl Default for FramePlane {
+    fn default() -> Self {
         unsafe { MaybeUninit::<Self>::zeroed().assume_init() }
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct DrmFormat {
     pub code: u32,
-    pub modifier: u64,
+    pub modifiers: Vec<u64>,
 }
 
 pub struct DmabufFrame {
@@ -80,10 +82,13 @@ pub struct DmabufFrame {
     pub status: i32,
 }
 
-impl DmabufFrame {
-    pub fn new() -> Self {
+impl Default for DmabufFrame {
+    fn default() -> Self {
         unsafe { MaybeUninit::<Self>::zeroed().assume_init() }
     }
+}
+
+impl DmabufFrame {
     pub fn get_attribs(&self) -> Vec<isize> {
         let mut vec: Vec<isize> = vec![
             0x3057, // WIDTH
@@ -97,7 +102,7 @@ impl DmabufFrame {
         for i in 0..self.num_planes {
             let mut a = (i * 5) as usize;
             vec.push(EGL_DMABUF_PLANE_ATTRS[a]);
-            vec.push(self.planes[i].fd.as_raw_fd() as _);
+            vec.push(self.planes[i].fd as _);
             a += 1;
             vec.push(EGL_DMABUF_PLANE_ATTRS[a]);
             vec.push(self.planes[i].offset as _);
@@ -115,54 +120,49 @@ impl DmabufFrame {
 
         vec
     }
-}
 
-impl Drop for DmabufFrame {
-    fn drop(&mut self) {
+    pub fn is_valid(&self) -> bool {
+        for i in 0..self.num_planes {
+            if self.planes[i].fd > 0 {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    pub fn close(&mut self) {
         for i in 0..self.num_planes {
             if self.planes[i].fd >= 0 {
                 unsafe { close(self.planes[i].fd) };
+                self.planes[i].fd = -1;
             }
         }
     }
 }
 
+impl Drop for DmabufFrame {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
 pub struct MemFdFrame {
-    pub path: String,
     pub fmt: FrameFormat,
     pub plane: FramePlane,
-    pub buffer: Option<WlBuffer>,
-    pub pool: Option<WlShmPool>,
-    pub status: i32,
-    pub format: Format,
 }
 
-impl MemFdFrame {
-    pub fn new(path: String) -> Self {
+impl Default for MemFdFrame {
+    fn default() -> Self {
         MemFdFrame {
-            path,
-            fmt: FrameFormat::new(),
-            plane: FramePlane::new(),
-            buffer: None,
-            pool: None,
-            status: 0,
-            format: Format::R8,
+            fmt: FrameFormat::default(),
+            plane: FramePlane::default(),
         }
     }
 }
 
-impl Drop for MemFdFrame {
-    fn drop(&mut self) {
-        if let Some(buffer) = self.buffer.as_ref() {
-            buffer.destroy();
-        }
-        if let Some(pool) = self.buffer.as_ref() {
-            pool.destroy();
-        }
-        if self.plane.fd >= 0 {
-            unsafe { close(self.plane.fd) };
-        }
-    }
+pub struct MemPtrFrame {
+    pub fmt: FrameFormat,
+    pub ptr: usize,
 }
 
 const GL_RGB: u32 = 0x1907;
@@ -170,15 +170,38 @@ const GL_BGR: u32 = 0x80E0;
 const GL_BGRA: u32 = 0x80E1;
 const GL_BGRA8_EXT: u32 = 0x93A1;
 
+
+fn fmt_to_gl(fmt: &FrameFormat) -> (u32, u32) {
+    match fmt.format {
+        DRM_FORMAT_ARGB8888 | DRM_FORMAT_XRGB8888 => (GL_BGRA8_EXT, GL_BGRA),
+        DRM_FORMAT_ABGR8888 | DRM_FORMAT_XBGR8888 => (GL_RGBA8, GL_RGBA),
+        _ => panic!("Unknown format 0x{:x}", fmt.format as u32),
+    }
+}
+
+pub fn texture_load_memptr(texture: u32, f: &MemPtrFrame) {
+    unsafe {
+        let (fmt, pf) = fmt_to_gl(&f.fmt);
+
+        glBindTexture(GL_TEXTURE_2D, texture);
+        debug_assert_eq!(glGetError(), GL_NO_ERROR);
+
+        glTexImage2D(GL_TEXTURE_2D, 0, fmt as _, f.fmt.w, f.fmt.h, 0, pf, GL_UNSIGNED_BYTE, f.ptr as _);
+        debug_assert_eq!(glGetError(), GL_NO_ERROR);
+    }
+}
+
 pub fn texture_load_memfd(texture: u32, f: &MemFdFrame) {
     unsafe {
-        let fd = f.plane.fd.as_raw_fd();
+        let fd = f.plane.fd;
 
         if fd <= 0 {
             return;
         }
 
-        let ptr = mmap(ptr::null_mut(), f.fmt.size, PROT_READ, MAP_SHARED, fd, 0);
+        let size = f.fmt.h as usize * f.plane.stride as usize;
+
+        let ptr = mmap(ptr::null_mut(), size, PROT_READ, MAP_SHARED, fd, 0);
 
         if ptr.is_null() {
             return;
@@ -193,14 +216,7 @@ pub fn texture_load_memfd(texture: u32, f: &MemFdFrame) {
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
         debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
-        let (fmt, pf) = match f.format {
-            Format::Bgra8888 | Format::Bgrx8888 => (GL_BGRA8_EXT, GL_BGRA),
-            Format::Bgr888 => (GL_BGRA8_EXT, GL_BGR),
-            Format::Rgba8888 | Format::Rgbx8888 => (GL_RGBA8, GL_RGBA),
-            Format::Rgb888 => (GL_RGBA8, GL_RGB),
-            _ => panic!("Unknown format 0x{:x}", f.format as u32),
-        };
-
+        let (fmt, pf) = fmt_to_gl(&f.fmt);
         //glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f.fmt.w, f.fmt.h, GL_BGRA, GL_UNSIGNED_BYTE, ptr);
 
         glTexImage2D(
@@ -219,7 +235,7 @@ pub fn texture_load_memfd(texture: u32, f: &MemFdFrame) {
         glBindTexture(GL_TEXTURE_2D, 0);
         debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
-        munmap(ptr, f.fmt.size);
+        munmap(ptr, size);
     }
 }
 
@@ -227,7 +243,10 @@ pub fn texture_load_dmabuf(texture: u32, frame: &DmabufFrame) {
     let attribs = frame.get_attribs();
 
     let egl_image = eglCreateImage(EGL_LINUX_DMABUF_EXT, attribs.as_ptr());
-    debug_assert_eq!(eglGetError(), EGL_SUCCESS);
+    if eglGetError() != EGL_SUCCESS {
+        debug!("eglCreateImage failed");
+        return;
+    }
 
     unsafe {
         glBindTexture(GL_TEXTURE_2D, texture);

@@ -29,6 +29,9 @@ chrono = "0.4.26"
 input-linux = "0.6.0"
 log = { version = "0.4.19", features = ["std"] }
 env_logger = "0.10.0"
+rust-fontconfig = "0.1.6"
+idmap = "0.2.21"
+freetype-rs = "0.32.0"
 
 [dependencies.stereokit]
 default-features = false

@@ -3,16 +3,16 @@ use std::{collections::VecDeque, mem::MaybeUninit};
 use glam::{vec2, Affine3A, Vec2, Vec3};
 use log::debug;
 use stereokit::{
-    ButtonState, CullMode, Handed, InputSource, Pose, Ray, SkDraw, StereoKitMultiThread,
+    ButtonState, Color32, CullMode, Handed, Pose, Ray, SkDraw, StereoKitDraw, StereoKitMultiThread,
     StereoKitSingleThread,
 };
 
-use crate::overlay::OverlayData;
+use crate::{overlay::OverlayData, AppSession};
 
 const HANDS: [Handed; 2] = [Handed::Left, Handed::Right];
 
 pub const HAND_LEFT: usize = 0;
-pub const HAND_RIGHT: usize = 0;
+pub const HAND_RIGHT: usize = 1;
 
 pub const POINTER_NORM: u16 = 0;
 pub const POINTER_SHIFT: u16 = 1;
@@ -37,8 +37,9 @@ pub struct PointerData {
     now: PointerState,
     before: PointerState,
     mode: u16,
+    colors: [Color32; 3],
     pose: Pose,
-    grabbed_offset: Vec3,
+    grabbed_offset: (Vec3, Vec3),
     grabbed_idx: Option<usize>,
     hovered_idx: Option<usize>,
 }
@@ -60,10 +61,10 @@ pub struct PointerHit {
 }
 
 impl InputState {
-    pub fn new() -> Self {
+    pub fn new(session: &AppSession) -> Self {
         Self {
             hmd: Pose::IDENTITY,
-            pointers: [PointerData::new(HAND_LEFT), PointerData::new(HAND_RIGHT)],
+            pointers: [PointerData::new(session, 0), PointerData::new(session, 1)],
         }
     }
     pub fn update(&mut self, sk: &SkDraw, interactables: &mut [OverlayData]) {
@@ -76,17 +77,18 @@ impl InputState {
 }
 
 impl PointerData {
-    fn new(hand: usize) -> Self {
+    fn new(session: &AppSession, idx: usize) -> Self {
         PointerData {
-            hand,
+            hand: session.primary_hand - idx,
             release_actions: VecDeque::new(),
             now: PointerState::default(),
             before: PointerState::default(),
             mode: 0,
             pose: Pose::IDENTITY,
             grabbed_idx: None,
-            grabbed_offset: Vec3::ZERO,
+            grabbed_offset: (Vec3::ZERO, Vec3::ZERO),
             hovered_idx: None,
+            colors: [session.color_norm, session.color_shift, session.color_alt],
         }
     }
     fn update(&mut self, hmd: &Pose, sk: &SkDraw) {
@@ -121,6 +123,8 @@ impl PointerData {
     }
 
     fn test_interactions(&mut self, hmd: &Pose, sk: &SkDraw, interactables: &mut [OverlayData]) {
+        let color = self.colors[self.mode as usize];
+
         // Grabbing an overlay
         if let Some(grabbed_idx) = self.grabbed_idx {
             let grabbed = &mut interactables[grabbed_idx];
@@ -140,18 +144,22 @@ impl PointerData {
                         grabbed.on_size(self.now.scroll);
                     } else {
                         debug!("Pointer {}: Push/pull {}", self.hand, grabbed.name);
-                        let offset = self.grabbed_offset
-                            + self.grabbed_offset.normalize_or_zero() * self.now.scroll * 0.2;
+                        let offset = self.grabbed_offset.0
+                            + self.grabbed_offset.0.normalize_or_zero() * self.now.scroll * 0.2;
                         let len_sq = offset.length_squared();
                         if len_sq > 0.20 && len_sq < 100. {
-                            self.grabbed_offset = offset;
+                            self.grabbed_offset.0 = offset;
                         }
                     }
                 }
-                let mat = Affine3A::from_rotation_translation(self.pose.orientation, self.pose.position);
+                let mat =
+                    Affine3A::from_rotation_translation(self.pose.orientation, self.pose.position);
                 sk.hierarchy_push(mat);
-                grabbed.on_move(sk.hierarchy_to_world_point(self.grabbed_offset), &hmd);
+                let grab_point = sk.hierarchy_to_world_point(self.grabbed_offset.0);
+                grabbed.on_move(grab_point, &hmd);
                 sk.hierarchy_pop();
+                sk.line_add(self.pose.position, grab_point, color, color, 0.002);
+
                 if self.now.click && !self.before.click {
                     debug!("Pointer {}: on_curve {}", self.hand, grabbed.name);
                     grabbed.on_curve();
@@ -175,6 +183,7 @@ impl PointerData {
 
                 if let Some((hit, _)) = sk.mesh_ray_intersect(&gfx.mesh, ray, CullMode::Back) {
                     let vec = overlay.interaction_transform.transform_point3(hit.pos);
+                    sk.line_add(ray.pos, hit.pos, color, color, 0.002);
                     hits[num_hits] = (i, vec2(vec.x, vec.y), Vec3::length(hit.pos - ray.pos));
                     num_hits += 1;
                     if num_hits > 7 {
@@ -186,7 +195,7 @@ impl PointerData {
             }
         }
 
-        if let Some(hit) = hits[..num_hits].iter().max_by(|a,b| {a.2.total_cmp(&b.2)}) {
+        if let Some(hit) = hits[..num_hits].iter().max_by(|a, b| a.2.total_cmp(&b.2)) {
             let now_idx = hit.0;
             let mut hit_data = PointerHit {
                 hand: self.hand,
@@ -214,9 +223,10 @@ impl PointerData {
             // grab start
             if self.now.grab && !self.before.grab {
                 overlay.primary_pointer = Some(self.hand);
-                let mat = Affine3A::from_rotation_translation(self.pose.orientation, self.pose.position);
+                let mat =
+                    Affine3A::from_rotation_translation(self.pose.orientation, self.pose.position);
                 sk.hierarchy_push(mat);
-                self.grabbed_offset = sk.hierarchy_to_local_point(overlay.transform.translation);
+                self.grabbed_offset.0 = sk.hierarchy_to_local_point(overlay.transform.translation);
                 sk.hierarchy_pop();
                 self.grabbed_idx = Some(now_idx);
                 debug!("Pointer {}: Grabbed {}", self.hand, overlay.name);
@@ -274,9 +284,9 @@ impl Default for PointerState {
 pub struct DummyInteractionHandler;
 
 impl InteractionHandler for DummyInteractionHandler {
-    fn on_left(&mut self, _hand: usize) { }
-    fn on_hover(&mut self, _hit: &crate::interactions::PointerHit) { }
-    fn on_press(&mut self, _hit: &crate::interactions::PointerHit) { }
-    fn on_scroll(&mut self, _hit: &crate::interactions::PointerHit, _delta: f32) { }
-    fn on_release(&mut self, _hit: &crate::interactions::PointerHit) { }
+    fn on_left(&mut self, _hand: usize) {}
+    fn on_hover(&mut self, _hit: &crate::interactions::PointerHit) {}
+    fn on_press(&mut self, _hit: &crate::interactions::PointerHit) {}
+    fn on_scroll(&mut self, _hit: &crate::interactions::PointerHit, _delta: f32) {}
+    fn on_release(&mut self, _hit: &crate::interactions::PointerHit) {}
 }
