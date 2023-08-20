@@ -1,20 +1,17 @@
-use std::{
-    mem::MaybeUninit,
-    os::fd::RawFd,
-    ptr,
-};
+use std::{mem::MaybeUninit, os::fd::RawFd, ptr};
 
 use gles31::{
     glBindBuffer, glBindTexture, glGetError, glPixelStorei, glTexImage2D, GL_NO_ERROR,
     GL_PIXEL_UNPACK_BUFFER, GL_RGBA, GL_RGBA8, GL_TEXTURE_2D, GL_UNPACK_ALIGNMENT,
-    GL_UNSIGNED_BYTE, 
+    GL_UNSIGNED_BYTE,
 };
 use libc::{close, mmap, munmap, MAP_SHARED, PROT_READ};
-use log::{debug};
+use log::debug;
 
 use crate::gl::egl::{
     eglCreateImage, eglDestroyImage, eglGetError, glEGLImageTargetTexture2DOES,
-    EGL_LINUX_DMABUF_EXT, EGL_SUCCESS, DRM_FORMAT_ARGB8888, DRM_FORMAT_XRGB8888, DRM_FORMAT_XBGR8888, DRM_FORMAT_ABGR8888,
+    DRM_FORMAT_ABGR8888, DRM_FORMAT_ARGB8888, DRM_FORMAT_XBGR8888, DRM_FORMAT_XRGB8888,
+    EGL_LINUX_DMABUF_EXT, EGL_SUCCESS,
 };
 
 #[rustfmt::skip]
@@ -100,7 +97,7 @@ impl DmabufFrame {
         ];
 
         for i in 0..self.num_planes {
-            let mut a = (i * 5) as usize;
+            let mut a = i * 5usize;
             vec.push(EGL_DMABUF_PLANE_ATTRS[a]);
             vec.push(self.planes[i].fd as _);
             a += 1;
@@ -127,7 +124,7 @@ impl DmabufFrame {
                 return true;
             }
         }
-        return false;
+        false
     }
 
     pub fn close(&mut self) {
@@ -146,18 +143,10 @@ impl Drop for DmabufFrame {
     }
 }
 
+#[derive(Default)]
 pub struct MemFdFrame {
     pub fmt: FrameFormat,
     pub plane: FramePlane,
-}
-
-impl Default for MemFdFrame {
-    fn default() -> Self {
-        MemFdFrame {
-            fmt: FrameFormat::default(),
-            plane: FramePlane::default(),
-        }
-    }
 }
 
 pub struct MemPtrFrame {
@@ -170,12 +159,11 @@ const GL_BGR: u32 = 0x80E0;
 const GL_BGRA: u32 = 0x80E1;
 const GL_BGRA8_EXT: u32 = 0x93A1;
 
-
 fn fmt_to_gl(fmt: &FrameFormat) -> (u32, u32) {
     match fmt.format {
         DRM_FORMAT_ARGB8888 | DRM_FORMAT_XRGB8888 => (GL_BGRA8_EXT, GL_BGRA),
         DRM_FORMAT_ABGR8888 | DRM_FORMAT_XBGR8888 => (GL_RGBA8, GL_RGBA),
-        _ => panic!("Unknown format 0x{:x}", fmt.format as u32),
+        _ => panic!("Unknown format 0x{:x}", { fmt.format }),
     }
 }
 
@@ -186,7 +174,17 @@ pub fn texture_load_memptr(texture: u32, f: &MemPtrFrame) {
         glBindTexture(GL_TEXTURE_2D, texture);
         debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
-        glTexImage2D(GL_TEXTURE_2D, 0, fmt as _, f.fmt.w, f.fmt.h, 0, pf, GL_UNSIGNED_BYTE, f.ptr as _);
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            fmt as _,
+            f.fmt.w,
+            f.fmt.h,
+            0,
+            pf,
+            GL_UNSIGNED_BYTE,
+            f.ptr as _,
+        );
         debug_assert_eq!(glGetError(), GL_NO_ERROR);
     }
 }

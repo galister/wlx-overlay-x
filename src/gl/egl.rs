@@ -33,61 +33,12 @@ pub const DRM_FORMAT_XBGR8888: FourCC = 0x34324258;
 static glEGLImageTargetTexture2DOES_p: AtomicUsize = AtomicUsize::new(0);
 
 #[allow(non_snake_case)]
-pub fn glEGLImageTargetTexture2DOES(target: i32, egl_image: EGLImage) -> () {
+pub fn glEGLImageTargetTexture2DOES(target: i32, egl_image: EGLImage) {
     let u = glEGLImageTargetTexture2DOES_p.load(Ordering::Relaxed);
     debug_assert_ne!(u, 0);
     unsafe {
         let _func_p: unsafe extern "C" fn(i32, EGLImage) -> () = core::mem::transmute(u);
         _func_p(target, egl_image)
-    }
-}
-
-#[allow(non_upper_case_globals)]
-static glCopyImageSubData_p: AtomicUsize = AtomicUsize::new(0);
-
-#[inline]
-#[allow(non_snake_case)]
-pub fn glCopyImageSubData(
-    src: u32,
-    s_target: u32,
-    s_level: i32,
-    s_x: i32,
-    s_y: i32,
-    s_z: i32,
-    dst: u32,
-    d_target: u32,
-    d_level: i32,
-    d_x: i32,
-    d_y: i32,
-    d_z: i32,
-    s_width: i32,
-    s_height: i32,
-    s_depth: i32,
-) -> () {
-    let u = glCopyImageSubData_p.load(Ordering::Relaxed);
-    debug_assert_ne!(u, 0);
-    unsafe {
-        let _func_p: unsafe extern "C" fn(
-            u32,
-            u32,
-            i32,
-            i32,
-            i32,
-            i32,
-            u32,
-            u32,
-            i32,
-            i32,
-            i32,
-            i32,
-            i32,
-            i32,
-            i32,
-        ) -> () = core::mem::transmute(u);
-        _func_p(
-            src, s_target, s_level, s_x, s_y, s_z, dst, d_target, d_level, d_x, d_y, d_z, s_width,
-            s_height, s_depth,
-        );
     }
 }
 
@@ -214,10 +165,6 @@ pub fn gl_init(sk: &stereokit::SkSingle) {
 
         let p0 = proc_fn(b"glEGLImageTargetTexture2DOES\0".as_ptr());
         glEGLImageTargetTexture2DOES_p.store(p0 as usize, Ordering::Relaxed);
-        debug_assert_ne!(p0, 0 as _);
-
-        let p0 = proc_fn(b"glCopyImageSubData\0".as_ptr());
-        glCopyImageSubData_p.store(p0 as usize, Ordering::Relaxed);
         debug_assert_ne!(p0, 0 as _);
 
         let p0 = proc_fn(b"eglQueryDmaBufFormatsEXT\0".as_ptr());

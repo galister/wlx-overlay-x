@@ -45,7 +45,7 @@ impl OverlayRenderer for WlrDmabufCapture {
     fn pause(&mut self, app: &mut AppState) {
         if self.task_handle.is_some() {
             let handle = self.task_handle.take().unwrap();
-            let _ = app.rt.block_on(async { handle.await });
+            let _ = app.rt.block_on(handle);
         }
     }
     fn resume(&mut self, _app: &mut AppState) {}
@@ -54,7 +54,7 @@ impl OverlayRenderer for WlrDmabufCapture {
             if handle.is_finished() {
                 let handle = self.task_handle.take().unwrap();
 
-                if let Ok(mutex) = app.rt.block_on(async { handle.await }) {
+                if let Ok(mutex) = app.rt.block_on(handle) {
                     if let Ok(frame) = mutex.lock() {
                         match frame.status {
                             FRAME_FAILED => {
@@ -62,9 +62,8 @@ impl OverlayRenderer for WlrDmabufCapture {
                             }
                             FRAME_READY => {
                                 if frame.is_valid() {
-                                    let handle = unsafe {
-                                        sk.tex_get_surface(&tex.as_ref()) as usize as u32
-                                    };
+                                    let handle =
+                                        unsafe { sk.tex_get_surface(tex.as_ref()) as usize as u32 };
                                     texture_load_dmabuf(handle, &frame);
                                 }
                             }

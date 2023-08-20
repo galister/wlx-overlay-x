@@ -15,7 +15,7 @@ pub static INPUT: Lazy<Mutex<Box<dyn InputProvider + Send>>> = Lazy::new(|| {
     }
     error!("Could not create uinput provider. Keyboard/Mouse input will not work!");
     error!("Check if you're in `input` group: `id -nG`");
-    return Mutex::new(Box::new(DummyProvider {}));
+    Mutex::new(Box::new(DummyProvider {}))
 });
 
 pub trait InputProvider {

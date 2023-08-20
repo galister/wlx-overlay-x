@@ -997,6 +997,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "idmap-derive"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3f44aa1b60e7de7e2833ad2cc3bc79880171d1e1efdb44ca833a1acf8102870"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "idna"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2636,6 +2647,7 @@ dependencies = [
  "glam",
  "gles31",
  "idmap",
+ "idmap-derive",
  "input-linux",
  "libc",
  "libloading 0.8.0",

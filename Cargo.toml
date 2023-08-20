@@ -32,6 +32,7 @@ env_logger = "0.10.0"
 rust-fontconfig = "0.1.6"
 idmap = "0.2.21"
 freetype-rs = "0.32.0"
+idmap-derive = "0.1.2"
 
 [dependencies.stereokit]
 default-features = false

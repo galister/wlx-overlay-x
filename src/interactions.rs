@@ -21,9 +21,10 @@ pub const POINTER_ALT: u16 = 2;
 pub trait InteractionHandler {
     fn on_hover(&mut self, hit: &PointerHit);
     fn on_left(&mut self, hand: usize);
-    fn on_press(&mut self, hit: &PointerHit);
-    fn on_release(&mut self, hit: &PointerHit);
+    fn on_pointer(&mut self, hit: &PointerHit, pressed: bool);
     fn on_scroll(&mut self, hit: &PointerHit, delta: f32);
+    fn on_pose_updated(&mut self, input: &InputState, sk: &SkDraw);
+    fn on_interactions_done(&mut self, input: &InputState, sk: &SkDraw);
 }
 
 pub struct InputState {
@@ -71,7 +72,15 @@ impl InputState {
         self.hmd = sk.input_head();
         for h in 0..2 {
             self.pointers[h].update(&self.hmd, sk);
+        }
+        for i in interactables.iter_mut() {
+            i.interaction.on_pose_updated(self, sk);
+        }
+        for h in 0..2 {
             self.pointers[h].test_interactions(&self.hmd, sk, interactables);
+        }
+        for i in interactables.iter_mut() {
+            i.interaction.on_pose_updated(self, sk);
         }
     }
 }
@@ -156,7 +165,7 @@ impl PointerData {
                     Affine3A::from_rotation_translation(self.pose.orientation, self.pose.position);
                 sk.hierarchy_push(mat);
                 let grab_point = sk.hierarchy_to_world_point(self.grabbed_offset.0);
-                grabbed.on_move(grab_point, &hmd);
+                grabbed.on_move(grab_point, hmd);
                 sk.hierarchy_pop();
                 sk.line_add(self.pose.position, grab_point, color, color, 0.002);
 
@@ -172,8 +181,7 @@ impl PointerData {
         let mut hits: [(usize, Vec2, f32); 8] = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut num_hits = 0usize;
 
-        for i in 0..interactables.len() {
-            let overlay = &mut interactables[i];
+        for (i, overlay) in interactables.iter_mut().enumerate() {
             if let Some(gfx) = overlay.gfx.as_ref() {
                 sk.hierarchy_push(overlay.transform);
                 let ray = Ray::new(
@@ -246,9 +254,9 @@ impl PointerData {
             if self.now.click && !self.before.click {
                 overlay.primary_pointer = Some(self.hand);
                 hit_data.primary = true;
-                overlay.interaction.on_press(&hit_data);
+                overlay.interaction.on_pointer(&hit_data, true);
             } else if !self.now.click && self.before.click {
-                overlay.interaction.on_release(&hit_data);
+                overlay.interaction.on_pointer(&hit_data, false);
             }
 
             if self.now.scroll.abs() > 0.1 {
@@ -286,7 +294,8 @@ pub struct DummyInteractionHandler;
 impl InteractionHandler for DummyInteractionHandler {
     fn on_left(&mut self, _hand: usize) {}
     fn on_hover(&mut self, _hit: &crate::interactions::PointerHit) {}
-    fn on_press(&mut self, _hit: &crate::interactions::PointerHit) {}
+    fn on_pointer(&mut self, _hit: &crate::interactions::PointerHit, _pressed: bool) {}
     fn on_scroll(&mut self, _hit: &crate::interactions::PointerHit, _delta: f32) {}
-    fn on_release(&mut self, _hit: &crate::interactions::PointerHit) {}
+    fn on_interactions_done(&mut self, _input: &InputState, _sk: &SkDraw) {}
+    fn on_pose_updated(&mut self, _input: &InputState, _sk: &SkDraw) {}
 }

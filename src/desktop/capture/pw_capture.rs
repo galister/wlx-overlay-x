@@ -5,11 +5,11 @@ use std::sync::Arc;
 use std::sync::{Mutex, RwLock};
 use std::thread::JoinHandle;
 
-use crate::AppState;
 use crate::desktop::frame::{
     texture_load_dmabuf, texture_load_memfd, texture_load_memptr, MemPtrFrame,
 };
 use crate::overlay::OverlayRenderer;
+use crate::AppState;
 use crate::{
     desktop::frame::{DmabufFrame, DrmFormat, FrameFormat, FramePlane, MemFdFrame},
     gl::egl::{
@@ -65,7 +65,7 @@ pub async fn pipewire_select_screen(token: Option<&str>) -> Result<u32, ashpd::E
         return Ok(stream.pipe_wire_node_id());
     }
 
-    return Err(ashpd::Error::NoResponse);
+    Err(ashpd::Error::NoResponse)
 }
 
 pub enum PipewireFrame {
@@ -110,16 +110,16 @@ impl OverlayRenderer for PipewireCapture {
                     PipewireFrame::Dmabuf(frame) => {
                         if frame.is_valid() {
                             let handle =
-                                unsafe { sk.tex_get_surface(&tex.as_ref()) as usize as u32 };
+                                unsafe { sk.tex_get_surface(tex.as_ref()) as usize as u32 };
                             texture_load_dmabuf(handle, &frame);
                         }
                     }
                     PipewireFrame::MemFd(frame) => {
-                        let handle = unsafe { sk.tex_get_surface(&tex.as_ref()) as usize as u32 };
+                        let handle = unsafe { sk.tex_get_surface(tex.as_ref()) as usize as u32 };
                         texture_load_memfd(handle, &frame);
                     }
                     PipewireFrame::MemPtr(frame) => {
-                        let handle = unsafe { sk.tex_get_surface(&tex.as_ref()) as usize as u32 };
+                        let handle = unsafe { sk.tex_get_surface(tex.as_ref()) as usize as u32 };
                         texture_load_memptr(handle, &frame);
                     }
                 }
@@ -164,12 +164,6 @@ fn main_loop(
         let _core = context.connect(None)?;
 
         let data = Arc::new(RwLock::new(StreamData::new()));
-        let data_copy = data.clone();
-        let data_copy2 = data.clone();
-
-        let name_copy = name.clone();
-        let name_copy2 = name.clone();
-        let name_copy3 = name.clone();
 
         let stream = Stream::<i32>::with_user_data(
             &main_loop,
@@ -181,101 +175,110 @@ fn main_loop(
             },
             0,
         )
-        .param_changed(move |id, _, param| {
-            if param.is_null() || id != libspa_sys::SPA_PARAM_Format {
-                return;
-            }
-            let mut maybe_info = MaybeUninit::<spa_video_info_raw>::zeroed();
-            unsafe {
-                if libspa_sys::spa_format_video_raw_parse(param, maybe_info.as_mut_ptr()) < 0 {
+        .param_changed({
+            let name = name.clone();
+            let data = data.clone();
+            move |id, _, param| {
+                if param.is_null() || id != libspa_sys::SPA_PARAM_Format {
                     return;
                 }
-            }
-            let info = unsafe { maybe_info.assume_init() };
-
-            let format = FrameFormat {
-                w: info.size.width,
-                h: info.size.height,
-                format: spa_to_fourcc(info.format),
-                modifier: info.modifier,
-            };
-
-            info!("{}: {:?}", &name_copy, format);
-
-            if let Some(ref mut data) = data_copy.write().ok() {
-                data.format = Some(format);
-
-                if let Some(stream) = &data.stream {
-                    let params = format_dmabuf_params();
-                    if let Err(e) = stream.update_params(&mut [params.as_ptr() as _]) {
-                        error!("{}: failed to update params: {}", &name_copy, e);
+                let mut maybe_info = MaybeUninit::<spa_video_info_raw>::zeroed();
+                unsafe {
+                    if libspa_sys::spa_format_video_raw_parse(param, maybe_info.as_mut_ptr()) < 0 {
+                        return;
                     }
                 }
-            }
-        })
-        .state_changed(move |old, new| {
-            info!(
-                "{}: stream state changed: {:?} -> {:?}",
-                &name_copy2, old, new
-            );
-        })
-        .process(move |stream, _| {
-            let mut maybe_buffer = None;
-            // discard all but the freshest ingredients
-            while let Some(buffer) = stream.dequeue_buffer() {
-                maybe_buffer = Some(buffer);
-            }
+                let info = unsafe { maybe_info.assume_init() };
 
-            if let Some(mut buffer) = maybe_buffer {
-                let datas = buffer.datas_mut();
-                if datas.len() < 1 {
-                    info!("{}: no data", &name_copy3);
-                    return;
-                }
+                let format = FrameFormat {
+                    w: info.size.width,
+                    h: info.size.height,
+                    format: spa_to_fourcc(info.format),
+                    modifier: info.modifier,
+                };
 
-                if let Ok(Some(format)) = data_copy2.read().and_then(|d| Ok(d.format)) {
-                    let planes: Vec<FramePlane> = datas
-                        .iter()
-                        .map(|p| FramePlane {
-                            fd: p.as_raw().fd as _,
-                            offset: p.chunk().offset(),
-                            stride: p.chunk().stride(),
-                        })
-                        .collect();
+                info!("{}: {:?}", &name, format);
 
-                    if let Ok(mut frame) = frame.lock() {
-                        match datas[0].type_() {
-                            DataType::DmaBuf => {
-                                let mut dmabuf = DmabufFrame::default();
-                                dmabuf.fmt = format;
-                                dmabuf.num_planes = planes.len();
-                                for i in 0..planes.len() {
-                                    dmabuf.planes[i] = planes[i];
-                                }
+                if let Ok(ref mut data) = data.write() {
+                    data.format = Some(format);
 
-                                *frame = Some(PipewireFrame::Dmabuf(dmabuf));
-                            }
-                            DataType::MemFd => {
-                                *frame = Some(PipewireFrame::MemFd(MemFdFrame {
-                                    fmt: format,
-                                    plane: FramePlane {
-                                        fd: datas[0].as_raw().fd as _,
-                                        offset: datas[0].chunk().offset(),
-                                        stride: datas[0].chunk().stride(),
-                                    },
-                                }));
-                            }
-                            DataType::MemPtr => {
-                                *frame = Some(PipewireFrame::MemPtr(MemPtrFrame {
-                                    fmt: format,
-                                    ptr: datas[0].as_raw().data as _,
-                                }));
-                            }
-                            _ => panic!("Unknown data type"),
+                    if let Some(stream) = &data.stream {
+                        let params = format_dmabuf_params();
+                        if let Err(e) = stream.update_params(&mut [params.as_ptr() as _]) {
+                            error!("{}: failed to update params: {}", &name, e);
                         }
                     }
-                } else {
-                    info!("{}: no format", &name_copy3);
+                }
+            }
+        })
+        .state_changed({
+            let name = name.clone();
+            move |old, new| {
+                info!("{}: stream state changed: {:?} -> {:?}", &name, old, new);
+            }
+        })
+        .process({
+            let name = name.clone();
+            let data = data.clone();
+            move |stream, _| {
+                let mut maybe_buffer = None;
+                // discard all but the freshest ingredients
+                while let Some(buffer) = stream.dequeue_buffer() {
+                    maybe_buffer = Some(buffer);
+                }
+
+                if let Some(mut buffer) = maybe_buffer {
+                    let datas = buffer.datas_mut();
+                    if datas.is_empty() {
+                        info!("{}: no data", &name);
+                        return;
+                    }
+
+                    if let Ok(Some(format)) = data.read().map(|d| d.format) {
+                        let planes: Vec<FramePlane> = datas
+                            .iter()
+                            .map(|p| FramePlane {
+                                fd: p.as_raw().fd as _,
+                                offset: p.chunk().offset(),
+                                stride: p.chunk().stride(),
+                            })
+                            .collect();
+
+                        if let Ok(mut frame) = frame.lock() {
+                            match datas[0].type_() {
+                                DataType::DmaBuf => {
+                                    let mut dmabuf = DmabufFrame {
+                                        fmt: format,
+                                        num_planes: planes.len(),
+                                        ..Default::default()
+                                    };
+                                    dmabuf.planes[..planes.len()]
+                                        .copy_from_slice(&planes[..planes.len()]);
+
+                                    *frame = Some(PipewireFrame::Dmabuf(dmabuf));
+                                }
+                                DataType::MemFd => {
+                                    *frame = Some(PipewireFrame::MemFd(MemFdFrame {
+                                        fmt: format,
+                                        plane: FramePlane {
+                                            fd: datas[0].as_raw().fd as _,
+                                            offset: datas[0].chunk().offset(),
+                                            stride: datas[0].chunk().stride(),
+                                        },
+                                    }));
+                                }
+                                DataType::MemPtr => {
+                                    *frame = Some(PipewireFrame::MemPtr(MemPtrFrame {
+                                        fmt: format,
+                                        ptr: datas[0].as_raw().data as _,
+                                    }));
+                                }
+                                _ => panic!("Unknown data type"),
+                            }
+                        }
+                    } else {
+                        info!("{}: no format", &name);
+                    }
                 }
             }
         })
@@ -321,8 +324,7 @@ fn load_dmabuf_formats() -> Vec<DrmFormat> {
         return out_fmts;
     }
 
-    let mut fmts = Vec::with_capacity(num_fmt as usize);
-    unsafe { fmts.set_len(num_fmt as _) };
+    let mut fmts: Vec<u32> = unsafe { MaybeUninit::new(vec![num_fmt as _]).assume_init() };
     if eglQueryDmaBufFormatsEXT(num_fmt, fmts.as_mut_ptr(), &mut num_fmt) != EGL_TRUE {
         return out_fmts;
     }
@@ -346,8 +348,7 @@ fn load_dmabuf_formats() -> Vec<DrmFormat> {
             continue;
         }
 
-        let mut mods = Vec::with_capacity(num_mod as usize);
-        unsafe { mods.set_len(num_mod as _) };
+        let mut mods: Vec<u64> = unsafe { MaybeUninit::new(vec![num_mod as _]).assume_init() };
         if eglQueryDmaBufModifiersEXT(f, num_mod, mods.as_mut_ptr(), 0, &mut num_mod) != EGL_TRUE {
             continue;
         }
@@ -445,16 +446,17 @@ fn format_get_params(fmt: Option<&DrmFormat>, fps: u32) -> SpaPod {
             value: Value::Id(Id(fourcc_to_spa(fmt.code))),
         });
 
-        if fmt.modifiers.len() > 0 {
+        if !fmt.modifiers.is_empty() {
             properties.push(Property {
                 key: libspa_sys::SPA_FORMAT_VIDEO_modifier,
                 flags: PropertyFlags::MANDATORY | PropertyFlags::DONT_FIXATE,
                 value: Value::Choice(ChoiceValue::Long(Choice(
-                    ChoiceFlags::from_bits_truncate(0), 
-                    ChoiceEnum::Enum{
+                    ChoiceFlags::from_bits_truncate(0),
+                    ChoiceEnum::Enum {
                         default: fmt.modifiers[0] as _,
-                        alternatives: fmt.modifiers.iter().skip(1).map(|m| { *m as _ }).collect()
-                    }))),
+                        alternatives: fmt.modifiers.iter().skip(1).map(|m| *m as _).collect(),
+                    },
+                ))),
             });
         }
     } else {
@@ -507,4 +509,3 @@ fn spa_to_fourcc(spa: u32) -> u32 {
         _ => panic!("Unsupported format"),
     }
 }
-

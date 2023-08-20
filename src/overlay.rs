@@ -1,7 +1,7 @@
 use std::f32::consts::PI;
 
 use glam::{vec2, vec3, Affine3A, Mat3A, Quat, Vec3, Vec3A};
-use log::{debug, info};
+use log::info;
 use stereokit::{
     sys::color32, Color128, Material, Mesh, Pose, RenderLayer, SkDraw, StereoKitDraw,
     StereoKitMultiThread, Tex, TextureFormat, TextureType, Vert,
@@ -31,6 +31,7 @@ pub struct OverlayData {
     pub size: (i32, i32),
     pub visible: bool,
     pub want_visible: bool,
+    pub grabbable: bool,
     pub color: Color128,
     pub transform: Affine3A,
     pub interaction_transform: Affine3A,
@@ -131,23 +132,11 @@ impl OverlayData {
             self.renderer.init(sk, app);
         }
 
-        debug!(
-            "Head at {}, looking {}",
-            sk.input_head().position,
-            sk.input_head().forward()
-        );
-
         let forward = sk.input_head().position + sk.input_head().forward();
         self.transform.translation = forward.into();
 
         self.transform = Affine3A::from_rotation_y(PI);
         self.transform.translation = forward.into();
-
-        debug!(
-            "Overlay at {}, looking at {}",
-            forward,
-            self.transform.transform_vector3a(-Vec3A::Z)
-        );
     }
     pub fn render(&mut self, sk: &SkDraw, app: &mut AppState) {
         if !self.visible {
@@ -164,11 +153,6 @@ impl OverlayData {
                 RenderLayer::LAYER0,
             );
         }
-        /*
-                    let x = pos.x * (self.output.size.0 as f32) - 8.;
-                    let y = pos.y * (self.output.size.1 as f32) - 8.;
-                    state.gl.draw_color(vec3(1., 0., 0.), x, y, 16., 16.);
-        */
     }
 
     pub fn on_size(&mut self, delta: f32) {
@@ -242,6 +226,7 @@ impl Default for OverlayData {
             size: (0, 0),
             visible: false,
             want_visible: false,
+            grabbable: false,
             color: COLOR_WHITE,
             transform: Affine3A::IDENTITY,
             interaction_transform: Affine3A::IDENTITY,
@@ -263,6 +248,7 @@ impl OverlayRenderer for FallbackRenderer {
         app.gl.begin_sk(sk, tex);
         app.gl.draw_color(
             vec3(1., 0., 1.),
+            1.,
             0.,
             0.,
             sk.tex_get_width(tex) as _,

@@ -500,7 +500,7 @@ impl GlRenderer {
         self.width = sk.tex_get_width(tex) as _;
         self.height = sk.tex_get_height(tex) as _;
 
-        let texture = unsafe { sk.tex_get_surface(&tex) as usize as u32 };
+        let texture = unsafe { sk.tex_get_surface(tex) as usize as u32 };
         self.framebuffer.bind(texture);
         self.begin();
     }
@@ -609,14 +609,14 @@ impl GlRenderer {
         }
     }
 
-    pub fn draw_color(&mut self, color: Vec3, x: f32, y: f32, w: f32, h: f32) {
+    pub fn draw_color(&mut self, color: Vec3, alpha: f32, x: f32, y: f32, w: f32, h: f32) {
         self.use_rect(x, y, w, h);
 
         self.vao.bind();
         self.shader_color.use_shader();
         let location = self.shader_color.locations[UNIFORM_COL0];
         unsafe {
-            glUniform4f(location, color.x, color.y, color.z, 1.);
+            glUniform4f(location, color.x, color.y, color.z, alpha);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
             glDrawElements(
@@ -629,7 +629,7 @@ impl GlRenderer {
         }
     }
 
-    pub fn draw_glyph(&mut self, texture: u32, x: f32, y: f32, w: f32, h: f32) {
+    pub fn draw_glyph(&mut self, texture: u32, x: f32, y: f32, w: f32, h: f32, color: Vec3) {
         self.use_rect(x, y, w, h);
 
         self.vao.bind();
@@ -646,7 +646,7 @@ impl GlRenderer {
             glUniform1i(tex0, 0);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
-            glUniform4f(col0, 1., 1., 1., 1.);
+            glUniform4f(col0, color.x, color.y, color.z, 1.);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
             glDrawElements(
