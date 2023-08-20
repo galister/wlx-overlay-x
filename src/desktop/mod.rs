@@ -121,7 +121,7 @@ pub async fn try_create_screen(
                 output.name.clone(),
                 node_id,
                 60,
-                true,
+                false,
             )));
         }
     }
