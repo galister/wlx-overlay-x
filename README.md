@@ -15,6 +15,13 @@ This project is in a highly experimental state. If you would like to give this a
 
 Recommend grabbing [rustup](https://rustup.rs/) if you don't have it yet.
 
+I'm lazy and have not included a keyboard layout yet. Just pull the one from WlxOverlay if you don't have one yet.
+```sh
+mkdir -p ~/.config/wlxoverlay/
+cd ~/.config/wlxoverlay/
+test -f keyboard.yaml || wget https://github.com/galister/WlxOverlay/raw/master/Resources/keyboard.yaml
+```
+
 Start Monado or any other OpenXR runtime. 
 
 Required extensions are `EXTX_overlay` and `MND_egl_enable`.
@@ -28,4 +35,5 @@ You'll see a screen and keyboard. You can turn these on and off using the watch 
 Right click: turn your controller so that your backhand is facing your hmd. You'll get a yellow laser. Pull trigger for right-click.
 
 Will upload the rest of the info later.
+
 
