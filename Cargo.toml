@@ -33,6 +33,11 @@ rust-fontconfig = "0.1.6"
 idmap = "0.2.21"
 freetype-rs = "0.32.0"
 idmap-derive = "0.1.2"
+serde = { version = "1.0.183", features = ["derive"] }
+regex = "1.9.3"
+strum = { version = "0.25.0", features = ["derive"] }
+serde_yaml = "0.9.25"
+serde_json = "1.0.105"
 
 [dependencies.stereokit]
 default-features = false

@@ -3,11 +3,13 @@ use std::rc::Rc;
 use freetype::{bitmap::PixelMode, face::LoadFlag, Face, Library};
 use gles31::{
     glBindBuffer, glBindTexture, glGetError, glTexImage2D, GL_NO_ERROR, GL_PIXEL_UNPACK_BUFFER,
-    GL_R8, GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_UNSIGNED_INT, GL_UNSIGNED_SHORT,
+    GL_R8, GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_UNSIGNED_INT, GL_UNSIGNED_SHORT, glPixelStorei, GL_PACK_ALIGNMENT, GL_UNPACK_ALIGNMENT,
 };
 use idmap::IdMap;
 use rust_fontconfig::{FcFontCache, FcPattern, PatternMatch};
 use stereokit::{SkDraw, StereoKitMultiThread, Tex, TextureType};
+
+use crate::overlay::COLOR_FALLBACK;
 
 const PRIMARY_FONT: &str = "LiberationSans";
 const GL_RED: u32 = 0x1903;
@@ -98,7 +100,7 @@ impl FontCache {
         }
 
         let maybe_path = self.fc.query(&FcPattern {
-            family: Some(PRIMARY_FONT.to_string()),
+            //family: Some(PRIMARY_FONT.to_string()),
             italic: PatternMatch::False,
             oblique: PatternMatch::False,
             monospace: PatternMatch::False,
@@ -157,6 +159,7 @@ impl FontCache {
 
     fn get_glyph_for_cp(&mut self, cp: usize, size: isize, sk: &SkDraw) -> Rc<Glyph> {
         let key = self.get_font_for_cp(cp, size);
+
         let font = &mut self.collections[size].fonts[key];
 
         if let Some(glyph) = font.glyphs.get(cp) {
@@ -173,28 +176,29 @@ impl FontCache {
         }
 
         let bmp = glyph.bitmap();
+        let buf = bmp.buffer();
+        let metrics = glyph.metrics();
 
-        let mode = bmp.pixel_mode();
-        if mode.is_err() {
-            return font.glyphs[0].clone();
-        }
-
-        let (pf, pt) = match mode.unwrap() {
-            PixelMode::Gray => (GL_RED, GL_UNSIGNED_BYTE),
-            PixelMode::Gray2 => (GL_RED, GL_UNSIGNED_SHORT),
-            PixelMode::Gray4 => (GL_RED, GL_UNSIGNED_INT),
+        let (pf, pt) = match bmp.pixel_mode() {
+            Ok(PixelMode::Gray) => (GL_RED, GL_UNSIGNED_BYTE),
+            Ok(PixelMode::Gray2) => (GL_RED, GL_UNSIGNED_SHORT),
+            Ok(PixelMode::Gray4) => (GL_RED, GL_UNSIGNED_INT),
             _ => return font.glyphs[0].clone(),
         };
 
-        let buf = bmp.buffer();
-
-        let tex = sk.tex_create(TextureType::IMAGE_NO_MIPS, stereokit::TextureFormat::R8);
+        let tex = sk.tex_gen_color(COLOR_FALLBACK, bmp.width() as _, bmp.rows() as _, TextureType::IMAGE_NO_MIPS, stereokit::TextureFormat::R8);
         unsafe {
             let handle = sk.tex_get_surface(tex.as_ref()) as usize as u32;
             glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
             glBindTexture(GL_TEXTURE_2D, handle);
+            debug_assert_eq!(glGetError(), GL_NO_ERROR);
+
+            glPixelStorei(GL_PACK_ALIGNMENT, 1);
+            debug_assert_eq!(glGetError(), GL_NO_ERROR);
+
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
             glTexImage2D(
@@ -211,11 +215,10 @@ impl FontCache {
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
         }
 
-        let metrics = glyph.metrics();
 
         let g = Glyph {
             tex: Some(tex),
-            top: ((bmp.rows() as i64) - (metrics.horiBearingY >> 6i64)) as _,
+            top: (metrics.horiBearingY >> 6i64) as _,
             left: (metrics.horiBearingX >> 6i64) as _,
             advance: (metrics.horiAdvance >> 6i64) as _,
             width: bmp.width() as _,

@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use std::{fs::create_dir, path::Path};
+use std::{fs::create_dir, path::Path, collections::VecDeque, sync::Mutex};
 
 use desktop::{try_create_screen, wl_client::WlClientState};
 use gl::{egl::gl_init, GlRenderer, PANEL_SHADER_BYTES};
@@ -7,12 +7,13 @@ use glam::{Quat, Vec3};
 use gui::font::FontCache;
 use input::INPUT;
 use interactions::InputState;
+use keyboard::create_keyboard;
 use log::error;
 use once_cell::sync::Lazy;
 use overlay::OverlayData;
 use stereokit::*;
 use tokio::runtime::{Builder, Runtime};
-use watch::{WATCH_DEFAULT_POS, WATCH_DEFAULT_ROT, create_watch};
+use watch::{create_watch, WATCH_DEFAULT_POS, WATCH_DEFAULT_ROT};
 
 mod desktop;
 mod gl;
@@ -23,17 +24,21 @@ mod keyboard;
 mod overlay;
 mod watch;
 
+pub type Task = Box<dyn FnOnce(&SkDraw, &mut AppState, &mut [OverlayData]) + Send>;
+pub static TASKS: Lazy<Mutex<VecDeque<Task>>> = Lazy::new(|| Mutex::new(VecDeque::new()));
+
 pub struct AppSession {
     pub config_path: String,
 
     pub show_screens: Vec<String>,
     pub show_keyboard: bool,
+    pub keyboard_volume: f32,
 
     pub screen_flip_h: bool,
     pub screen_flip_v: bool,
     pub screen_invert_color: bool,
 
-    pub watch_hand: u32,
+    pub watch_hand: usize,
     pub watch_pos: Vec3,
     pub watch_rot: Quat,
 
@@ -65,17 +70,18 @@ impl AppSession {
 
         AppSession {
             config_path,
-            show_screens: vec![],
+            show_screens: vec!["DP-3".to_string()],
+            keyboard_volume: 0.5,
             show_keyboard: false,
             screen_flip_h: false,
             screen_flip_v: false,
             screen_invert_color: false,
             primary_hand: 1,
-            watch_hand: 0,
+            watch_hand: 1,
             watch_pos: WATCH_DEFAULT_POS,
             watch_rot: WATCH_DEFAULT_ROT,
             color_norm: Color32 {
-                r: 255,
+                r: 0,
                 g: 255,
                 b: 255,
                 a: 255,
@@ -87,8 +93,8 @@ impl AppSession {
                 a: 255,
             },
             color_alt: Color32 {
-                r: 0,
-                g: 255,
+                r: 255,
+                g: 0,
                 b: 255,
                 a: 255,
             },
@@ -155,18 +161,23 @@ fn main() {
         uinput.set_desktop_extent(wl.get_desktop_extent());
     }
 
+    overlays.push(OverlayData::default()); // placeholder for watch
+
+    let mut keyboard = create_keyboard();
+    keyboard.want_visible = true;
+    overlays.push(keyboard);
+
     for i in 0..wl.outputs.len() {
         let maybe_screen = rt.block_on(try_create_screen(&wl, i, &session));
         if let Some(mut screen) = maybe_screen {
             screen.want_visible = session.show_screens.contains(&screen.name);
 
-            screens.push((i, screen.name.clone()));
+            screens.push((overlays.len(), screen.name.clone()));
             overlays.push(screen);
         }
     }
 
-    let mut watch = create_watch(&session, screens);
-    overlays.insert(0, watch);
+    overlays[0] = create_watch(&session, screens);
 
     let panel_shader = sk.shader_create_mem(PANEL_SHADER_BYTES).unwrap();
     let mut app = Lazy::new(|| AppState {
@@ -185,10 +196,19 @@ fn main() {
             for overlay in overlays.iter_mut() {
                 if overlay.want_visible && !overlay.visible {
                     overlay.show(sk, &mut app);
+                } else if !overlay.want_visible && overlay.visible {
+                    overlay.hide(&mut app);
                 }
 
                 overlay.render(sk, &mut app);
             }
+            
+            if let Ok(mut tasks) = TASKS.lock() {
+                while let Some(task) = tasks.pop_front() {
+                    task(sk, &mut app, overlays.as_mut_slice());
+                }
+            }
+
             if let Ok(mut uinput) = INPUT.lock() {
                 uinput.on_new_frame();
             }

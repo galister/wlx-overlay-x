@@ -1,9 +1,7 @@
-use std::f32::consts::PI;
-
-use glam::{vec2, vec3, Affine3A, Mat3A, Quat, Vec3, Vec3A};
+use glam::{vec2, vec3, Affine3A, Mat3A, Quat, Vec3A, Vec3};
 use log::info;
 use stereokit::{
-    sys::color32, Color128, Material, Mesh, Pose, RenderLayer, SkDraw, StereoKitDraw,
+    sys::color32, Color128, Material, Mesh, RenderLayer, SkDraw, StereoKitDraw,
     StereoKitMultiThread, Tex, TextureFormat, TextureType, Vert,
 };
 
@@ -24,6 +22,12 @@ pub const COLOR_FALLBACK: Color128 = Color128 {
     b: 1.,
     a: 1.,
 };
+pub const COLOR_TRANSPARENT: Color128 = Color128 {
+    r: 0.,
+    g: 0.,
+    b: 0.,
+    a: 0.,
+};
 
 pub struct OverlayData {
     pub name: String,
@@ -31,15 +35,20 @@ pub struct OverlayData {
     pub size: (i32, i32),
     pub visible: bool,
     pub want_visible: bool,
+    pub show_hide: bool,
     pub grabbable: bool,
     pub color: Color128,
     pub transform: Affine3A,
+    pub spawn_point: Vec3,
+    pub spawn_rotation: Quat,
+    pub relative_to: RelativeTo,
     pub interaction_transform: Affine3A,
-    pub renderer: Box<dyn OverlayRenderer>,
-    pub interaction: Box<dyn InteractionHandler>,
+    pub backend: Box<dyn OverlayBackend>,
     pub primary_pointer: Option<usize>,
     pub gfx: Option<OverlayGraphics>,
 }
+
+pub trait OverlayBackend: OverlayRenderer + InteractionHandler {}
 
 pub struct OverlayGraphics {
     pub tex: Tex,
@@ -129,22 +138,38 @@ impl OverlayData {
 
             self.gfx = Some(OverlayGraphics { tex, mat, mesh });
 
-            self.renderer.init(sk, app);
+            self.backend.init(sk, app);
+        } else {
+            self.backend.resume(app);
         }
 
-        let forward = sk.input_head().position + sk.input_head().forward();
-        self.transform.translation = forward.into();
-
-        self.transform = Affine3A::from_rotation_y(PI);
-        self.transform.translation = forward.into();
+        self.reset(app);
     }
+
+    pub fn hide(&mut self, app: &mut AppState) {
+        if !self.visible {
+            return;
+        }
+
+        info!("{}: Hide", &self.name);
+
+        self.visible = false;
+        self.backend.pause(app);
+    }
+
+    pub fn reset(&mut self, app: &mut AppState) {
+        let spawn = app.input.hmd.transform_point3(self.spawn_point);
+        self.transform = Affine3A::from_translation(spawn);
+        self.realign(&app.input.hmd) 
+    }
+
     pub fn render(&mut self, sk: &SkDraw, app: &mut AppState) {
         if !self.visible {
             return;
         }
 
         if let Some(gfx) = self.gfx.as_mut() {
-            self.renderer.render(sk, &gfx.tex, app);
+            self.backend.render(sk, &gfx.tex, app);
             sk.mesh_draw(
                 &gfx.mesh,
                 &gfx.mat,
@@ -163,9 +188,9 @@ impl OverlayData {
         }
     }
 
-    pub fn on_move(&mut self, pos: Vec3, hmd: &Pose) {
-        if (hmd.position - pos).length_squared() > 0.2 {
-            self.transform.translation = pos.into();
+    pub fn on_move(&mut self, pos: Vec3A, hmd: &Affine3A) {
+        if (hmd.translation - pos).length_squared() > 0.2 {
+            self.transform.translation = pos;
             self.realign(hmd);
         }
     }
@@ -176,8 +201,7 @@ impl OverlayData {
 
     pub fn on_curve(&mut self) {}
 
-    pub fn realign(&mut self, hmd_pose: &Pose) {
-        let hmd = Affine3A::from_rotation_translation(hmd_pose.orientation, hmd_pose.position);
+    pub fn realign(&mut self, hmd: &Affine3A) {
         let to_hmd = hmd.translation - self.transform.translation;
         let up_dir: Vec3A;
 
@@ -216,7 +240,51 @@ impl OverlayData {
     }
 }
 
-// --- Dummy impls below ---
+// Boilerplate and dummies
+
+pub struct SplitOverlayBackend {
+    pub renderer: Box<dyn OverlayRenderer>,
+    pub interaction: Box<dyn InteractionHandler>,
+}
+
+impl Default for SplitOverlayBackend {
+    fn default() -> SplitOverlayBackend {
+        SplitOverlayBackend {
+            renderer: Box::new(FallbackRenderer),
+            interaction: Box::new(DummyInteractionHandler),
+        }
+    }
+}
+
+impl OverlayBackend for SplitOverlayBackend {}
+impl OverlayRenderer for SplitOverlayBackend {
+    fn init(&mut self, sk: &SkDraw, app: &mut AppState) {
+        self.renderer.init(sk, app);
+    }
+    fn pause(&mut self, app: &mut AppState) {
+        self.renderer.pause(app);
+    }
+    fn resume(&mut self, app: &mut AppState) {
+        self.renderer.resume(app);
+    }
+    fn render(&mut self, sk: &SkDraw, tex: &Tex, app: &mut AppState) {
+        self.renderer.render(sk, tex, app);
+    }
+}
+impl InteractionHandler for SplitOverlayBackend {
+    fn on_left(&mut self, hand: usize) {
+        self.interaction.on_left(hand);
+    }
+    fn on_hover(&mut self, hit: &crate::interactions::PointerHit) {
+        self.interaction.on_hover(hit);
+    }
+    fn on_scroll(&mut self, hit: &crate::interactions::PointerHit, delta: f32) {
+        self.interaction.on_scroll(hit, delta);
+    }
+    fn on_pointer(&mut self, hit: &crate::interactions::PointerHit, pressed: bool) {
+        self.interaction.on_pointer(hit, pressed);
+    }
+}
 
 impl Default for OverlayData {
     fn default() -> OverlayData {
@@ -226,13 +294,16 @@ impl Default for OverlayData {
             size: (0, 0),
             visible: false,
             want_visible: false,
+            show_hide: false,
             grabbable: false,
             color: COLOR_WHITE,
+            relative_to: RelativeTo::None,
+            spawn_point: Vec3::NEG_Z,
+            spawn_rotation: Quat::IDENTITY,
             transform: Affine3A::IDENTITY,
             interaction_transform: Affine3A::IDENTITY,
             gfx: None,
-            renderer: Box::new(FallbackRenderer),
-            interaction: Box::new(DummyInteractionHandler),
+            backend: Box::<SplitOverlayBackend>::default(),
             primary_pointer: None,
         }
     }
@@ -256,4 +327,10 @@ impl OverlayRenderer for FallbackRenderer {
         );
         app.gl.end();
     }
+}
+
+pub enum RelativeTo {
+    None,
+    Head,
+    Hand(usize),
 }

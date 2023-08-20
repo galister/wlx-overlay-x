@@ -6,7 +6,6 @@ use std::{
 
 use glam::{vec2, Affine2};
 use log::{info, warn};
-use stereokit::SkDraw;
 
 use crate::{
     desktop::capture::{
@@ -14,8 +13,8 @@ use crate::{
         wlr_dmabuf_capture::WlrDmabufCapture,
     },
     input::{INPUT, MOUSE_LEFT, MOUSE_MIDDLE, MOUSE_RIGHT},
-    interactions::{InteractionHandler, PointerHit, POINTER_ALT, POINTER_SHIFT, InputState},
-    overlay::{OverlayData, OverlayRenderer},
+    interactions::{InteractionHandler, PointerHit, POINTER_ALT, POINTER_SHIFT},
+    overlay::{SplitOverlayBackend, OverlayData, OverlayRenderer},
     AppSession,
 };
 
@@ -84,8 +83,6 @@ impl InteractionHandler for ScreenInteractionHandler {
         }
     }
     fn on_left(&mut self, _hand: usize) {}
-    fn on_pose_updated(&mut self, _input: &InputState, _sk: &SkDraw) {}
-    fn on_interactions_done(&mut self, _input: &InputState, _sk: &SkDraw) {}
 }
 
 pub async fn try_create_screen(
@@ -129,15 +126,20 @@ pub async fn try_create_screen(
         }
     }
     if let Some(capture) = capture {
-        Some(OverlayData {
-            name: output.name.clone(),
-            size,
-            grabbable: true,
+        let backend = Box::new(SplitOverlayBackend {
             renderer: capture,
             interaction: Box::new(ScreenInteractionHandler::new(
                 output.logical_pos,
                 output.logical_size,
             )),
+        });
+
+        Some(OverlayData {
+            name: output.name.clone(),
+            size,
+            show_hide: true,
+            grabbable: true,
+            backend,
             ..Default::default()
         })
     } else {

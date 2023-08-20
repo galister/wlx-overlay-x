@@ -8,7 +8,7 @@ use crate::{
     overlay::OverlayRenderer,
     AppState,
 };
-use log::warn;
+use log::{warn, debug};
 use stereokit::StereoKitMultiThread;
 use tokio::task::JoinHandle;
 
@@ -72,7 +72,7 @@ impl OverlayRenderer for WlrDmabufCapture {
                     }
                 }
             } else {
-                warn!("[Dmabuf] Frame not ready to present");
+                debug!("[Dmabuf] Frame not ready to present");
                 return;
             }
         }

@@ -7,6 +7,9 @@ use log::{error, info};
 use once_cell::sync::Lazy;
 use std::fs::File;
 use std::{mem::transmute, sync::Mutex};
+use strum::IntoEnumIterator;
+
+use crate::keyboard::{MODS_TO_KEYS, VirtualKey};
 
 pub static INPUT: Lazy<Mutex<Box<dyn InputProvider + Send>>> = Lazy::new(|| {
     if let Some(uinput) = UInputProvider::try_new() {
@@ -22,7 +25,7 @@ pub trait InputProvider {
     fn mouse_move(&mut self, x: i32, y: i32);
     fn send_button(&self, button: u16, down: bool);
     fn wheel(&self, delta: i32);
-    fn set_modifiers(&self);
+    fn set_modifiers(&mut self, mods: u8);
     fn send_key(&self, key: u16, down: bool);
     fn set_desktop_extent(&mut self, extent: [i32; 2]);
     fn on_new_frame(&mut self);
@@ -32,6 +35,7 @@ pub struct UInputProvider {
     handle: UInputHandle<File>,
     desktop_extent: [i32; 2],
     mouse_moved: bool,
+    cur_modifiers: u8,
 }
 
 pub struct DummyProvider;
@@ -103,7 +107,12 @@ impl UInputProvider {
                 }
             }
 
-            //TODO register keys
+            for key in VirtualKey::iter() {
+                let key: Key = unsafe { transmute(key as u16) };
+                if handle.set_keybit(key).is_err() {
+                    return None;
+                }
+            }
 
             if handle.set_absbit(AbsoluteAxis::X).is_err() {
                 return None;
@@ -120,6 +129,7 @@ impl UInputProvider {
                     handle,
                     desktop_extent: [0, 0],
                     mouse_moved: false,
+                    cur_modifiers: 0,
                 });
             }
         }
@@ -167,7 +177,17 @@ impl InputProvider for UInputProvider {
             error!("{}", res.to_string());
         }
     }
-    fn set_modifiers(&self) {}
+    fn set_modifiers(&mut self, modifiers: u8) {
+        let changed = self.cur_modifiers ^ modifiers;
+        for i in 0..7 {
+            let m = 1 << i;
+            if changed & m != 0 {
+                let vk = MODS_TO_KEYS.get(m).unwrap()[0] as u16;
+                self.send_key(vk, modifiers & m != 0);
+            }
+        }
+        self.cur_modifiers = modifiers;
+    }
     fn send_key(&self, key: u16, down: bool) {
         let time = get_time();
         let events = [
@@ -191,7 +211,7 @@ impl InputProvider for DummyProvider {
     fn mouse_move(&mut self, _x: i32, _y: i32) {}
     fn send_button(&self, _button: u16, _down: bool) {}
     fn wheel(&self, _delta: i32) {}
-    fn set_modifiers(&self) {}
+    fn set_modifiers(&mut self, _modifiers: u8) {}
     fn send_key(&self, _key: u16, _down: bool) {}
     fn set_desktop_extent(&mut self, _extent: [i32; 2]) {}
     fn on_new_frame(&mut self) {}

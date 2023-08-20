@@ -3,7 +3,7 @@ use std::{mem::size_of, ptr::null};
 use glam::Vec3;
 use gles31::{
     glActiveTexture, glAttachShader, glBindBuffer, glBindFramebuffer, glBindTexture,
-    glBindVertexArray, glBlendEquationSeparate, glBlendFunc, glBlendFuncSeparate, glBufferData,
+    glBindVertexArray, glBlendEquationSeparate, glBlendFuncSeparate, glBufferData,
     glCheckFramebufferStatus, glClear, glColorMask, glCompileShader, glCreateProgram,
     glCreateShader, glDeleteBuffers, glDeleteFramebuffers, glDeleteProgram, glDeleteShader,
     glDeleteTextures, glDeleteVertexArrays, glDetachShader, glDrawBuffers, glDrawElements,
@@ -17,7 +17,7 @@ use gles31::{
     GL_ONE_MINUS_SRC_ALPHA, GL_PIXEL_PACK_BUFFER, GL_PIXEL_UNPACK_BUFFER, GL_RGBA, GL_SRC_ALPHA,
     GL_SRGB8_ALPHA8, GL_STATIC_DRAW, GL_TEXTURE0, GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
     GL_TEXTURE_MIN_FILTER, GL_TEXTURE_WRAP_S, GL_TEXTURE_WRAP_T, GL_TRIANGLES, GL_UNSIGNED_BYTE,
-    GL_UNSIGNED_INT, GL_VERTEX_SHADER, GL_ZERO,
+    GL_UNSIGNED_INT, GL_VERTEX_SHADER, glEnable, GL_BLEND, glClearColor,
 };
 use stereokit::{SkDraw, StereoKitMultiThread};
 
@@ -518,6 +518,9 @@ impl GlRenderer {
             glViewport(0, 0, self.width as _, self.height as _);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
+            glEnable(GL_BLEND);
+            debug_assert_eq!(glGetError(), GL_NO_ERROR);
+
             glBlendFuncSeparate(
                 GL_SRC_ALPHA,
                 GL_ONE_MINUS_SRC_ALPHA,
@@ -529,7 +532,7 @@ impl GlRenderer {
             glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
-            glColorMask(1, 1, 1, 0);
+            glColorMask(1, 1, 1, 1);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
         }
     }
@@ -571,7 +574,6 @@ impl GlRenderer {
         unsafe {
             glBindTexture(GL_TEXTURE_2D, texture);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
-            glBlendFunc(GL_ONE, GL_ZERO);
             glUniform1i(location, 0);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
@@ -595,7 +597,6 @@ impl GlRenderer {
         let location = self.shader_sprite.locations[UNIFORM_TEX0];
         debug_assert_ne!(location, -1);
         unsafe {
-            glBlendFunc(GL_ONE, GL_ZERO);
             glUniform1i(location, 0);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
@@ -642,7 +643,6 @@ impl GlRenderer {
         unsafe {
             glBindTexture(GL_TEXTURE_2D, texture);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
-            glBlendFunc(GL_ONE, GL_ZERO);
             glUniform1i(tex0, 0);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
 
@@ -661,6 +661,8 @@ impl GlRenderer {
 
     pub fn clear(&self) {
         unsafe {
+            glClearColor(0., 0., 0., 0.);
+            debug_assert_eq!(glGetError(), GL_NO_ERROR);
             glClear(GL_COLOR_BUFFER_BIT);
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
         }
