@@ -136,9 +136,9 @@ impl PointerData {
         let hmd_up = hmd.orientation.mul_vec3(Vec3::Y);
         let dot = hmd_up.dot(con.palm.forward());
         self.mode = if dot < -0.85 {
-            POINTER_SHIFT // palm down
-        } else if dot > 0.7 {
             POINTER_ALT // palm up
+        } else if dot > 0.6 {
+            POINTER_SHIFT // palm down
         } else {
             POINTER_NORM // neutral
         }

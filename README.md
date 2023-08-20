@@ -25,5 +25,7 @@ cargo run
 
 You'll see a screen and keyboard. You can turn these on and off using the watch on your left wrist.
 
+Right click: turn your controller so that your backhand is facing your hmd. You'll get a yellow laser. Pull trigger for right-click.
+
 Will upload the rest of the info later.
 
