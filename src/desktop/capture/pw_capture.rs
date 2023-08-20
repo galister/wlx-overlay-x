@@ -27,7 +27,7 @@ use libspa_sys::{
     spa_pod, spa_video_info_raw, SPA_DATA_DmaBuf, SPA_DATA_MemFd, SPA_DATA_MemPtr,
     SPA_VIDEO_FORMAT_BGRx, SPA_VIDEO_FORMAT_RGBx, SPA_VIDEO_FORMAT_BGRA, SPA_VIDEO_FORMAT_RGBA,
 };
-use log::{error, info, warn};
+use log::{error, info, warn, debug};
 use once_cell::sync::Lazy;
 use pipewire::prelude::*;
 use pipewire::properties;
@@ -247,6 +247,7 @@ fn main_loop(
                         if let Ok(mut frame) = frame.lock() {
                             match datas[0].type_() {
                                 DataType::DmaBuf => {
+                                    debug!("{}: got dmabuf frame", &name);
                                     let mut dmabuf = DmabufFrame {
                                         fmt: format,
                                         num_planes: planes.len(),
@@ -258,6 +259,7 @@ fn main_loop(
                                     *frame = Some(PipewireFrame::Dmabuf(dmabuf));
                                 }
                                 DataType::MemFd => {
+                                    debug!("{}: got memfd frame", &name);
                                     *frame = Some(PipewireFrame::MemFd(MemFdFrame {
                                         fmt: format,
                                         plane: FramePlane {
@@ -268,6 +270,7 @@ fn main_loop(
                                     }));
                                 }
                                 DataType::MemPtr => {
+                                    debug!("{}: got memptr frame", &name);
                                     *frame = Some(PipewireFrame::MemPtr(MemPtrFrame {
                                         fmt: format,
                                         ptr: datas[0].as_raw().data as _,
