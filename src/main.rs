@@ -44,6 +44,8 @@ pub struct AppSession {
 
     pub primary_hand: usize,
 
+    pub capture_method: String,
+
     pub color_norm: Color32,
     pub color_shift: Color32,
     pub color_alt: Color32,
@@ -76,6 +78,7 @@ impl AppSession {
             screen_flip_h: false,
             screen_flip_v: false,
             screen_invert_color: false,
+            capture_method: "auto".to_string(),
             primary_hand: 1,
             watch_hand: 1,
             watch_pos: WATCH_DEFAULT_POS,

@@ -247,7 +247,6 @@ fn main_loop(
                         if let Ok(mut frame) = frame.lock() {
                             match datas[0].type_() {
                                 DataType::DmaBuf => {
-                                    debug!("{}: got dmabuf frame", &name);
                                     let mut dmabuf = DmabufFrame {
                                         fmt: format,
                                         num_planes: planes.len(),
@@ -259,7 +258,6 @@ fn main_loop(
                                     *frame = Some(PipewireFrame::Dmabuf(dmabuf));
                                 }
                                 DataType::MemFd => {
-                                    debug!("{}: got memfd frame", &name);
                                     *frame = Some(PipewireFrame::MemFd(MemFdFrame {
                                         fmt: format,
                                         plane: FramePlane {
@@ -270,7 +268,6 @@ fn main_loop(
                                     }));
                                 }
                                 DataType::MemPtr => {
-                                    debug!("{}: got memptr frame", &name);
                                     *frame = Some(PipewireFrame::MemPtr(MemPtrFrame {
                                         fmt: format,
                                         ptr: datas[0].as_raw().data as _,

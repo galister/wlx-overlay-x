@@ -1,12 +1,13 @@
-use std::{mem::MaybeUninit, os::fd::RawFd, ptr};
+use std::{mem::MaybeUninit, os::fd::RawFd, ptr, ffi::CStr};
 
 use gles31::{
     glBindBuffer, glBindTexture, glGetError, glPixelStorei, glTexImage2D, GL_NO_ERROR,
     GL_PIXEL_UNPACK_BUFFER, GL_RGBA, GL_RGBA8, GL_TEXTURE_2D, GL_UNPACK_ALIGNMENT,
-    GL_UNSIGNED_BYTE,
+    GL_UNSIGNED_BYTE, GL_VENDOR, glGetString,
 };
 use libc::{close, mmap, munmap, MAP_SHARED, PROT_READ};
 use log::debug;
+use once_cell::sync::Lazy;
 
 use crate::gl::egl::{
     eglCreateImage, eglDestroyImage, eglGetError, glEGLImageTargetTexture2DOES,
@@ -159,9 +160,19 @@ const GL_BGR: u32 = 0x80E0;
 const GL_BGRA: u32 = 0x80E1;
 const GL_BGRA8_EXT: u32 = 0x93A1;
 
+static IS_NVIDIA: Lazy<bool> = Lazy::new(|| {
+    let vendor = unsafe { glGetString(GL_VENDOR) };
+    let vendor = unsafe { CStr::from_ptr(vendor as _) };
+    let vendor = vendor.to_str().unwrap();
+    debug!("GL_VENDOR: {}", vendor);
+    vendor.contains("NVIDIA")
+});
+
 fn fmt_to_gl(fmt: &FrameFormat) -> (u32, u32) {
     match fmt.format {
-        DRM_FORMAT_ARGB8888 | DRM_FORMAT_XRGB8888 => (GL_BGRA8_EXT, GL_BGRA),
+        // Nvidia can't seem to load BGRA into an RGBA texture
+        // AMD doesn't seem to support BGRA internal formats
+        DRM_FORMAT_ARGB8888 | DRM_FORMAT_XRGB8888 => ( if *IS_NVIDIA { GL_BGRA8_EXT } else { GL_RGBA8 }, GL_BGRA),
         DRM_FORMAT_ABGR8888 | DRM_FORMAT_XBGR8888 => (GL_RGBA8, GL_RGBA),
         _ => panic!("Unknown format 0x{:x}", { fmt.format }),
     }

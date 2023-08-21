@@ -105,7 +105,7 @@ pub async fn try_create_screen(
     let size = (output.size.0, output.size.1);
     let mut capture: Option<Box<dyn OverlayRenderer>> = None;
 
-    if wl.maybe_wlr_dmabuf_mgr.is_some() {
+    if session.capture_method == "auto" && wl.maybe_wlr_dmabuf_mgr.is_some() {
         info!("{}: Using Wlr DMA-Buf", &output.name);
         let wl = WlClientState::new();
         capture = WlrDmabufCapture::try_new(wl, output);
@@ -121,7 +121,7 @@ pub async fn try_create_screen(
                 output.name.clone(),
                 node_id,
                 60,
-                false,
+                session.capture_method != "pw-fallback",
             )));
         }
     }
