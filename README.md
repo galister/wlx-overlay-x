@@ -2,7 +2,7 @@
 
 A lightweight OpenXR overlay for Wayland desktops, inspired by XSOverlay.
 
-This is a rewrite of the original [WlxOverlay for OpenVR](https://github.com/galister/WlxOverlay).
+This is a rewrite of [WlxOverlay](https://github.com/galister/WlxOverlay) (That one is for OpenVR).
 
 # Under Development
 
@@ -14,13 +14,6 @@ This project is in a highly experimental state. If you would like to give this a
 # Usage
 
 Recommend grabbing [rustup](https://rustup.rs/) if you don't have it yet.
-
-I'm lazy and have not included a keyboard layout yet. Just pull the one from WlxOverlay if you don't have one yet.
-```sh
-mkdir -p ~/.config/wlxoverlay/
-cd ~/.config/wlxoverlay/
-test -f keyboard.yaml || wget https://github.com/galister/WlxOverlay/raw/master/Resources/keyboard.yaml
-```
 
 Start Monado or any other OpenXR runtime. 
 
@@ -34,6 +27,14 @@ You'll see a screen and keyboard. You can turn these on and off using the watch 
 
 Right click: turn your controller so that your backhand is facing your hmd. You'll get a yellow laser. Pull trigger for right-click.
 
-Will upload the rest of the info later.
+# Reporting Issues
 
+Make sure to:
+- set `RUST_LOG=debug`
+- use a debug build to see GL assertion messages
 
+# Works Used
+- [freesound](https://freesound.org/), CC0 sound effects (find the sounds by searching for their number)
+- [StereoKit](https://stereokit.net/), MIT
+- [SimulaVR TextShader](https://github.com/SimulaVR/Simula/blob/82256ba4c9c933e85f41c3e0aa429314d7275228/addons/godot-haskell-plugin/TextShader.tres), MIT - StereoKit port from [StardustXR](https://github.com/StardustXR/server/blob/main/src/wayland/shaders/shader_unlit_simula.sks), GPL-2
+- See [Cargo.toml](https://github.com/galister/wlx-overlay-x/blob/main/Cargo.toml) for full list.

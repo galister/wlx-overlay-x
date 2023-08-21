@@ -1,5 +1,5 @@
+use glam::{Vec2, vec2};
 use log::warn;
-use std::cmp::max;
 use std::os::fd::IntoRawFd;
 use std::sync::{Arc, Mutex};
 
@@ -19,7 +19,7 @@ use wayland_client::{
         wl_output::{self, Transform, WlOutput},
         wl_registry::WlRegistry,
     },
-    Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum,
+    Connection, Dispatch, EventQueue, Proxy, QueueHandle, 
 };
 
 use crate::desktop::frame::{FramePlane, FRAME_FAILED};
@@ -32,9 +32,9 @@ pub struct OutputState {
     pub name: String,
     pub model: String,
     pub size: (i32, i32),
-    pub logical_pos: (i32, i32),
-    pub logical_size: (i32, i32),
-    pub transform: WEnum<Transform>, // TODO: support upright displays
+    pub logical_pos: Vec2,
+    pub logical_size: Vec2,
+    pub transform: Transform,
     done: bool,
 }
 
@@ -78,9 +78,9 @@ impl WlClientState {
                     name: String::new(),
                     model: String::new(),
                     size: (0, 0),
-                    logical_pos: (0, 0),
-                    logical_size: (0, 0),
-                    transform: WEnum::Unknown(0),
+                    logical_pos: Vec2::ZERO,
+                    logical_size: Vec2::ZERO,
+                    transform: Transform::Normal,
                     done: false,
                 };
 
@@ -93,11 +93,11 @@ impl WlClientState {
         state
     }
 
-    pub fn get_desktop_extent(&self) -> [i32; 2] {
-        let mut extent = [0, 0];
+    pub fn get_desktop_extent(&self) -> Vec2 {
+        let mut extent = Vec2::ZERO;
         for output in self.outputs.iter() {
-            extent[0] = max(extent[0], output.logical_pos.0 + output.logical_size.0);
-            extent[1] = max(extent[1], output.logical_pos.1 + output.logical_size.1);
+            extent.x = extent.x.max(output.logical_pos.x + output.logical_size.x);
+            extent.y = extent.y.max(output.logical_pos.y + output.logical_size.y);
         }
         extent
     }
@@ -139,16 +139,25 @@ impl Dispatch<ZxdgOutputV1, u32> for WlClientState {
             }
             zxdg_output_v1::Event::LogicalPosition { x, y } => {
                 if let Some(output) = state.outputs.iter_mut().find(|o| o.id == *data) {
-                    output.logical_pos = (x, y);
+                    output.logical_pos = vec2(x as _, y as _);
                 }
             }
             zxdg_output_v1::Event::LogicalSize { width, height } => {
                 if let Some(output) = state.outputs.iter_mut().find(|o| o.id == *data) {
-                    output.logical_size = (width, height);
+                    output.logical_size = vec2(width as _, height as _);
                 }
             }
             zxdg_output_v1::Event::Done => {
                 if let Some(output) = state.outputs.iter_mut().find(|o| o.id == *data) {
+
+                    if output.logical_size.x < 0. {
+                        output.logical_pos.x += output.logical_size.x;
+                        output.logical_size.x *= -1.;
+                    }
+                    if output.logical_size.y < 0. {
+                        output.logical_pos.y += output.logical_size.y;
+                        output.logical_size.y *= -1.;
+                    }
                     output.done = true;
                 }
             }
@@ -177,7 +186,7 @@ impl Dispatch<WlOutput, u32> for WlClientState {
             } => {
                 if let Some(output) = state.outputs.iter_mut().find(|o| o.id == *data) {
                     output.model = model;
-                    output.transform = transform;
+                    output.transform = transform.into_result().unwrap_or(Transform::Normal);
                 }
             }
             _ => {}

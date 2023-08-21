@@ -4,20 +4,20 @@ use glam::Vec3;
 use gles31::{
     glActiveTexture, glAttachShader, glBindBuffer, glBindFramebuffer, glBindTexture,
     glBindVertexArray, glBlendEquationSeparate, glBlendFuncSeparate, glBufferData,
-    glCheckFramebufferStatus, glClear, glColorMask, glCompileShader, glCreateProgram,
+    glCheckFramebufferStatus, glClear, glClearColor, glColorMask, glCompileShader, glCreateProgram,
     glCreateShader, glDeleteBuffers, glDeleteFramebuffers, glDeleteProgram, glDeleteShader,
     glDeleteTextures, glDeleteVertexArrays, glDetachShader, glDrawBuffers, glDrawElements,
-    glEnableVertexAttribArray, glFramebufferTexture2D, glGenBuffers, glGenFramebuffers,
+    glEnable, glEnableVertexAttribArray, glFramebufferTexture2D, glGenBuffers, glGenFramebuffers,
     glGenTextures, glGenVertexArrays, glGetError, glGetShaderInfoLog, glGetShaderiv,
     glGetUniformLocation, glLinkProgram, glShaderSource, glTexImage2D, glTexParameteri,
     glUniform1i, glUniform4f, glUseProgram, glVertexAttribPointer, glViewport, GL_ARRAY_BUFFER,
-    GL_CLAMP_TO_EDGE, GL_COLOR_ATTACHMENT0, GL_COLOR_BUFFER_BIT, GL_COMPILE_STATUS,
+    GL_BLEND, GL_CLAMP_TO_EDGE, GL_COLOR_ATTACHMENT0, GL_COLOR_BUFFER_BIT, GL_COMPILE_STATUS,
     GL_DRAW_FRAMEBUFFER, GL_ELEMENT_ARRAY_BUFFER, GL_FALSE, GL_FLOAT, GL_FRAGMENT_SHADER,
     GL_FRAMEBUFFER_COMPLETE, GL_FUNC_ADD, GL_INFO_LOG_LENGTH, GL_LINEAR, GL_NO_ERROR, GL_ONE,
     GL_ONE_MINUS_SRC_ALPHA, GL_PIXEL_PACK_BUFFER, GL_PIXEL_UNPACK_BUFFER, GL_RGBA, GL_SRC_ALPHA,
     GL_SRGB8_ALPHA8, GL_STATIC_DRAW, GL_TEXTURE0, GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
     GL_TEXTURE_MIN_FILTER, GL_TEXTURE_WRAP_S, GL_TEXTURE_WRAP_T, GL_TRIANGLES, GL_UNSIGNED_BYTE,
-    GL_UNSIGNED_INT, GL_VERTEX_SHADER, glEnable, GL_BLEND, glClearColor,
+    GL_UNSIGNED_INT, GL_VERTEX_SHADER,
 };
 use stereokit::{SkDraw, StereoKitMultiThread};
 

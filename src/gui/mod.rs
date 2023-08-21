@@ -1,9 +1,11 @@
 use glam::{Vec2, Vec3};
 use stereokit::{SkDraw, StereoKitMultiThread, Tex, TextureFormat, TextureType};
 
-use crate::{interactions::InteractionHandler, overlay::{OverlayRenderer, OverlayBackend, COLOR_TRANSPARENT, OverlayGraphics}, AppState};
-
-use self::font::Glyph;
+use crate::{
+    interactions::InteractionHandler,
+    overlay::{OverlayBackend, OverlayRenderer, COLOR_TRANSPARENT},
+    AppState,
+};
 
 pub mod font;
 
@@ -30,11 +32,11 @@ pub fn color_parse(html_hex: &str) -> Vec3 {
     color
 }
 
-pub struct Canvas<T1,T2> {
+pub struct Canvas<T1, T2> {
     pub data: T1,
     pub width: usize,
     pub height: usize,
-    pub controls: Vec<Control<T1,T2>>,
+    pub controls: Vec<Control<T1, T2>>,
 
     pub fg_color: Vec3,
     pub bg_color: Vec3,
@@ -50,7 +52,7 @@ pub struct Canvas<T1,T2> {
     gl: Option<CanvasGl>,
 }
 
-impl<T1,T2> Canvas<T1,T2> {
+impl<T1, T2> Canvas<T1, T2> {
     pub fn new(width: usize, height: usize, data: T1) -> Self {
         let stride = width / RES_DIVIDER;
         let rows = height / RES_DIVIDER;
@@ -143,11 +145,21 @@ impl<T1,T2> Canvas<T1,T2> {
         });
 
         for (i, item) in label.iter().enumerate().take(label.len().min(2)) {
-            self.controls.push(Control{
-                rect: if i == 0 { 
-                    Rect { x: x+4., y: y + (self.font_size as f32) + 4., w, h } 
+            self.controls.push(Control {
+                rect: if i == 0 {
+                    Rect {
+                        x: x + 4.,
+                        y: y + (self.font_size as f32) + 4.,
+                        w,
+                        h,
+                    }
                 } else {
-                    Rect { x: x + w * 0.5, y: y+h-(self.font_size as f32) + 4., w, h }
+                    Rect {
+                        x: x + w * 0.5,
+                        y: y + h - (self.font_size as f32) + 4.,
+                        w,
+                        h,
+                    }
                 },
                 text: item.clone(),
                 fg_color: self.fg_color,
@@ -206,25 +218,26 @@ impl<T1,T2> Canvas<T1,T2> {
     }
 }
 
-impl<T1,T2> OverlayBackend for Canvas<T1,T2> {}
-impl<T1,T2> InteractionHandler for Canvas<T1,T2> {
+impl<T1, T2> OverlayBackend for Canvas<T1, T2> {}
+impl<T1, T2> InteractionHandler for Canvas<T1, T2> {
     fn on_left(&mut self, hand: usize) {
         self.hover_controls[hand] = None;
     }
     fn on_hover(&mut self, hit: &crate::interactions::PointerHit) {
         if let Some(i) = self.interactive_get_idx(hit.uv) {
             self.hover_controls[hit.hand] = Some(i);
+        } else {
+            self.hover_controls[hit.hand] = None;
         }
     }
     fn on_pointer(&mut self, hit: &crate::interactions::PointerHit, pressed: bool) {
-        let idx = if pressed { 
+        let idx = if pressed {
             self.interactive_get_idx(hit.uv)
         } else {
-            self.pressed_controls[hit.hand] 
+            self.pressed_controls[hit.hand]
         };
 
         if let Some(idx) = idx {
-            self.hover_controls[hit.hand] = Some(idx);
             let c = &mut self.controls[idx];
             if pressed {
                 if let Some(ref mut f) = c.on_press {
@@ -237,21 +250,31 @@ impl<T1,T2> InteractionHandler for Canvas<T1,T2> {
             }
         }
     }
-    fn on_scroll(&mut self, _hit: &crate::interactions::PointerHit, _delta: f32) {
-    }
+    fn on_scroll(&mut self, _hit: &crate::interactions::PointerHit, _delta: f32) {}
 }
 
-impl<T1,T2> OverlayRenderer for Canvas<T1,T2> {
+impl<T1, T2> OverlayRenderer for Canvas<T1, T2> {
     fn init(&mut self, sk: &stereokit::SkDraw, app: &mut AppState) {
         self.gl = Some(CanvasGl {
-            tex_bg: sk.tex_gen_color(COLOR_TRANSPARENT, self.width as _, self.height as _, TextureType::IMAGE_NO_MIPS, TextureFormat::RGBA32),
-            tex_fg: sk.tex_gen_color(COLOR_TRANSPARENT, self.width as _, self.height as _, TextureType::IMAGE_NO_MIPS, TextureFormat::RGBA32),
+            tex_bg: sk.tex_gen_color(
+                COLOR_TRANSPARENT,
+                self.width as _,
+                self.height as _,
+                TextureType::IMAGE_NO_MIPS,
+                TextureFormat::RGBA32,
+            ),
+            tex_fg: sk.tex_gen_color(
+                COLOR_TRANSPARENT,
+                self.width as _,
+                self.height as _,
+                TextureType::IMAGE_NO_MIPS,
+                TextureFormat::RGBA32,
+            ),
         });
 
         self.render_bg(sk, app);
 
         self.render_fg(sk, app);
-
     }
     fn pause(&mut self, _app: &mut AppState) {}
     fn resume(&mut self, _app: &mut AppState) {}
@@ -304,7 +327,7 @@ impl<T1,T2> OverlayRenderer for Canvas<T1,T2> {
     }
 }
 
-pub struct Control<T1,T2> {
+pub struct Control<T1, T2> {
     pub state: Option<T2>,
     rect: Rect,
     fg_color: Vec3,
@@ -323,7 +346,7 @@ pub struct Control<T1,T2> {
     on_render_fg: Option<fn(&mut Self, &SkDraw, &mut AppState)>,
 }
 
-impl<T1,T2> Default for Control<T1,T2> {
+impl<T1, T2> Default for Control<T1, T2> {
     fn default() -> Self {
         Self {
             rect: Rect {
@@ -349,7 +372,7 @@ impl<T1,T2> Default for Control<T1,T2> {
     }
 }
 
-impl<T1,T2> Control<T1,T2> {
+impl<T1, T2> Control<T1, T2> {
     #[inline(always)]
     pub fn set_text(&mut self, text: String) {
         if self.text == text {

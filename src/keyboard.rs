@@ -1,14 +1,27 @@
-use std::{collections::HashMap, env::var, fs, path::PathBuf, str::FromStr, process::{Command, Child}};
+use std::{
+    collections::HashMap,
+    env::var,
+    fs,
+    io::Cursor,
+    path::PathBuf,
+    process::{Child, Command},
+    str::FromStr,
+};
 
-use crate::{overlay::OverlayData, gui::{Canvas, color_parse, Control}, input::INPUT};
+use crate::{
+    gui::{color_parse, Canvas, Control},
+    input::INPUT,
+    overlay::OverlayData,
+};
 use glam::{vec2, vec3};
 use idmap::{idmap, IdMap};
 use idmap_derive::IntegerId;
 use log::error;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use rodio::{Decoder, OutputStream, Source};
 use serde::{Deserialize, Serialize};
-use strum::{EnumString, EnumIter};
+use strum::{EnumIter, EnumString};
 
 const PIXELS_PER_UNIT: f32 = 80.;
 const BUTTON_PADDING: f32 = 4.;
@@ -16,19 +29,16 @@ const BUTTON_PADDING: f32 = 4.;
 pub fn create_keyboard() -> OverlayData {
     let size = vec2(
         LAYOUT.row_size * PIXELS_PER_UNIT,
-        (LAYOUT.main_layout.len() as f32) * PIXELS_PER_UNIT, 
+        (LAYOUT.main_layout.len() as f32) * PIXELS_PER_UNIT,
     );
 
     let data = KeyboardData {
         modifiers: 0,
         processes: vec![],
+        audio_stream: None,
     };
 
-    let mut canvas = Canvas::new(
-        size.x as _,
-        size.y as _,
-        data,
-    );
+    let mut canvas = Canvas::new(size.x as _, size.y as _, data);
 
     canvas.bg_color = color_parse("#101010");
     canvas.panel(0., 0., size.x, size.y);
@@ -49,18 +59,26 @@ pub fn create_keyboard() -> OverlayData {
             let w = unit_size * my_size - 2. * BUTTON_PADDING;
 
             if let Some(key) = LAYOUT.main_layout[row][col].as_ref() {
-
                 let mut maybe_state: Option<KeyButtonData> = None;
                 if let Ok(vk) = VirtualKey::from_str(key) {
                     if let Some(mods) = KEYS_TO_MODS.get(vk) {
-                        maybe_state = Some(KeyButtonData::Modifier { modifier: *mods, sticky: false, pressed: false });
+                        maybe_state = Some(KeyButtonData::Modifier {
+                            modifier: *mods,
+                            sticky: false,
+                            pressed: false,
+                        });
                     } else {
                         maybe_state = Some(KeyButtonData::Key { vk, pressed: false });
                     }
                 } else if let Some(macro_verbs) = LAYOUT.macros.get(key) {
-                    maybe_state = Some(KeyButtonData::Macro { verbs: key_events_for_macro(macro_verbs) });
+                    maybe_state = Some(KeyButtonData::Macro {
+                        verbs: key_events_for_macro(macro_verbs),
+                    });
                 } else if let Some(exec_args) = LAYOUT.exec_commands.get(key) {
-                    maybe_state = Some(KeyButtonData::Exec { program: exec_args.first().unwrap().clone(), args: exec_args.iter().skip(1).cloned().collect() });
+                    maybe_state = Some(KeyButtonData::Exec {
+                        program: exec_args.first().unwrap().clone(),
+                        args: exec_args.iter().skip(1).cloned().collect(),
+                    });
                 } else {
                     error!("Unknown key: {}", key);
                 }
@@ -92,24 +110,31 @@ pub fn create_keyboard() -> OverlayData {
     }
 }
 
-fn key_press (control: &mut Control<KeyboardData, KeyButtonData>, data: &mut KeyboardData) {
+fn key_press(control: &mut Control<KeyboardData, KeyButtonData>, data: &mut KeyboardData) {
     match control.state.as_mut() {
         Some(KeyButtonData::Key { vk, pressed }) => {
             if let Ok(input) = INPUT.lock() {
+                data.key_click();
                 input.send_key(*vk as _, true);
-            } 
-            *pressed = true;
+                *pressed = true;
+            }
         }
-        Some(KeyButtonData::Modifier { modifier, sticky, pressed }) => {
+        Some(KeyButtonData::Modifier {
+            modifier,
+            sticky,
+            pressed,
+        }) => {
             *sticky = data.modifiers & *modifier == 0;
             data.modifiers |= *modifier;
             if let Ok(mut input) = INPUT.lock() {
+                data.key_click();
                 input.set_modifiers(data.modifiers);
+                *pressed = true;
             }
-            *pressed = true;
         }
         Some(KeyButtonData::Macro { verbs }) => {
             if let Ok(input) = INPUT.lock() {
+                data.key_click();
                 for (vk, press) in verbs {
                     input.send_key(*vk as _, *press);
                 }
@@ -117,11 +142,11 @@ fn key_press (control: &mut Control<KeyboardData, KeyButtonData>, data: &mut Key
         }
         Some(KeyButtonData::Exec { program, args }) => {
             // Reap previous processes
-            data.processes.retain_mut(|child| {
-                !matches!(child.try_wait(), Ok(Some(_)))
-            });
+            data.processes
+                .retain_mut(|child| !matches!(child.try_wait(), Ok(Some(_))));
 
-            if let Ok(child ) = Command::new(program).args(args).spawn() {
+            data.key_click();
+            if let Ok(child) = Command::new(program).args(args).spawn() {
                 data.processes.push(child);
             }
         }
@@ -136,8 +161,12 @@ fn key_release(control: &mut Control<KeyboardData, KeyButtonData>, data: &mut Ke
                 input.send_key(*vk as _, false);
             }
             *pressed = false;
-        },
-        Some(KeyButtonData::Modifier { modifier, sticky, pressed }) => {
+        }
+        Some(KeyButtonData::Modifier {
+            modifier,
+            sticky,
+            pressed,
+        }) => {
             if !*sticky {
                 data.modifiers &= !*modifier;
                 if let Ok(mut input) = INPUT.lock() {
@@ -146,33 +175,59 @@ fn key_release(control: &mut Control<KeyboardData, KeyButtonData>, data: &mut Ke
                 *pressed = false;
             }
         }
-        _ => {},
+        _ => {}
     }
 }
 
-fn test_highlight(control: &mut Control<KeyboardData, KeyButtonData>, _data: &mut KeyboardData) -> bool {
+fn test_highlight(
+    control: &mut Control<KeyboardData, KeyButtonData>,
+    _data: &mut KeyboardData,
+) -> bool {
     match control.state.as_ref() {
-        Some(KeyButtonData::Key { pressed, .. }) => {
-            *pressed
-        }
-        Some(KeyButtonData::Modifier { pressed, .. }) => {
-            *pressed
-        }
-        _ => { false },
+        Some(KeyButtonData::Key { pressed, .. }) => *pressed,
+        Some(KeyButtonData::Modifier { pressed, .. }) => *pressed,
+        _ => false,
     }
 }
-
 
 struct KeyboardData {
     modifiers: KeyModifier,
     processes: Vec<Child>,
+    audio_stream: Option<OutputStream>,
+}
+
+impl KeyboardData {
+    fn key_click(&mut self) {
+        let wav = include_bytes!("res/421581.wav");
+        let cursor = Cursor::new(wav);
+        let source = Decoder::new_wav(cursor).unwrap();
+        self.audio_stream = None;
+        if let Ok((stream, handle)) = OutputStream::try_default() {
+            let _ = handle.play_raw(source.convert_samples());
+            self.audio_stream = Some(stream);
+        } else {
+            error!("Failed to play key click");
+        }
+    }
 }
 
 enum KeyButtonData {
-    Key { vk: VirtualKey, pressed: bool },
-    Modifier { modifier: KeyModifier, sticky: bool, pressed: bool },
-    Macro { verbs: Vec<(VirtualKey, bool)> },
-    Exec { program: String, args: Vec<String> },
+    Key {
+        vk: VirtualKey,
+        pressed: bool,
+    },
+    Modifier {
+        modifier: KeyModifier,
+        sticky: bool,
+        pressed: bool,
+    },
+    Macro {
+        verbs: Vec<(VirtualKey, bool)>,
+    },
+    Exec {
+        program: String,
+        args: Vec<String>,
+    },
 }
 
 static KEYBOARD_YAML: Lazy<PathBuf> = Lazy::new(|| {
@@ -225,9 +280,14 @@ struct Layout {
 
 impl Layout {
     fn load_from_disk() -> Layout {
-        let yaml = fs::read_to_string(KEYBOARD_YAML.as_path()).expect("Failed to read keyboard.yaml");
+        let mut yaml = fs::read_to_string(KEYBOARD_YAML.as_path()).ok();
+
+        if yaml.is_none() {
+            yaml = Some(include_str!("res/keyboard.yaml").to_string());
+        }
+
         let mut layout: Layout =
-            serde_yaml::from_str(&yaml).expect("Failed to parse keyboard.yaml");
+            serde_yaml::from_str(&yaml.unwrap()).expect("Failed to parse keyboard.yaml");
         layout.post_load();
 
         layout

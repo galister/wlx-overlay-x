@@ -8,7 +8,7 @@ use crate::{
     overlay::OverlayRenderer,
     AppState,
 };
-use log::{warn, debug};
+use log::warn;
 use stereokit::StereoKitMultiThread;
 use tokio::task::JoinHandle;
 
@@ -58,7 +58,7 @@ impl OverlayRenderer for WlrDmabufCapture {
                     if let Ok(frame) = mutex.lock() {
                         match frame.status {
                             FRAME_FAILED => {
-                                warn!("[Dmabuf] Frame capture failed");
+                                warn!("Frame capture failed");
                             }
                             FRAME_READY => {
                                 if frame.is_valid() {
@@ -72,7 +72,6 @@ impl OverlayRenderer for WlrDmabufCapture {
                     }
                 }
             } else {
-                debug!("[Dmabuf] Frame not ready to present");
                 return;
             }
         }

@@ -27,7 +27,7 @@ use libspa_sys::{
     spa_pod, spa_video_info_raw, SPA_DATA_DmaBuf, SPA_DATA_MemFd, SPA_DATA_MemPtr,
     SPA_VIDEO_FORMAT_BGRx, SPA_VIDEO_FORMAT_RGBx, SPA_VIDEO_FORMAT_BGRA, SPA_VIDEO_FORMAT_RGBA,
 };
-use log::{error, info, warn, debug};
+use log::{error, info, warn};
 use once_cell::sync::Lazy;
 use pipewire::prelude::*;
 use pipewire::properties;

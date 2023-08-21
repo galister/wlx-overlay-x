@@ -1,3 +1,4 @@
+use glam::Vec2;
 use input_linux::{
     AbsoluteAxis, AbsoluteInfo, AbsoluteInfoSetup, EventKind, InputId, Key, RelativeAxis,
     UInputHandle,
@@ -9,7 +10,7 @@ use std::fs::File;
 use std::{mem::transmute, sync::Mutex};
 use strum::IntoEnumIterator;
 
-use crate::keyboard::{MODS_TO_KEYS, VirtualKey};
+use crate::keyboard::{VirtualKey, MODS_TO_KEYS};
 
 pub static INPUT: Lazy<Mutex<Box<dyn InputProvider + Send>>> = Lazy::new(|| {
     if let Some(uinput) = UInputProvider::try_new() {
@@ -22,18 +23,18 @@ pub static INPUT: Lazy<Mutex<Box<dyn InputProvider + Send>>> = Lazy::new(|| {
 });
 
 pub trait InputProvider {
-    fn mouse_move(&mut self, x: i32, y: i32);
+    fn mouse_move(&mut self, pos: Vec2);
     fn send_button(&self, button: u16, down: bool);
     fn wheel(&self, delta: i32);
     fn set_modifiers(&mut self, mods: u8);
     fn send_key(&self, key: u16, down: bool);
-    fn set_desktop_extent(&mut self, extent: [i32; 2]);
+    fn set_desktop_extent(&mut self, extent: Vec2);
     fn on_new_frame(&mut self);
 }
 
 pub struct UInputProvider {
     handle: UInputHandle<File>,
-    desktop_extent: [i32; 2],
+    desktop_extent: Vec2,
     mouse_moved: bool,
     cur_modifiers: u8,
 }
@@ -44,7 +45,7 @@ pub const MOUSE_LEFT: u16 = 0x110;
 pub const MOUSE_RIGHT: u16 = 0x111;
 pub const MOUSE_MIDDLE: u16 = 0x112;
 
-const MOUSE_EXTENT: i32 = u16::MAX as _;
+const MOUSE_EXTENT: f32 = 32768.;
 
 const EV_SYN: u16 = 0x0;
 const EV_KEY: u16 = 0x1;
@@ -71,7 +72,7 @@ impl UInputProvider {
                     info: AbsoluteInfo {
                         value: 0,
                         minimum: 0,
-                        maximum: MOUSE_EXTENT,
+                        maximum: MOUSE_EXTENT as _,
                         fuzz: 0,
                         flat: 0,
                         resolution: 10,
@@ -82,7 +83,7 @@ impl UInputProvider {
                     info: AbsoluteInfo {
                         value: 0,
                         minimum: 0,
-                        maximum: MOUSE_EXTENT,
+                        maximum: MOUSE_EXTENT as _,
                         fuzz: 0,
                         flat: 0,
                         resolution: 10,
@@ -127,7 +128,7 @@ impl UInputProvider {
             if handle.create(&id, name, 0, &abs_info).is_ok() {
                 return Some(UInputProvider {
                     handle,
-                    desktop_extent: [0, 0],
+                    desktop_extent: Vec2::ZERO,
                     mouse_moved: false,
                     cur_modifiers: 0,
                 });
@@ -138,19 +139,18 @@ impl UInputProvider {
 }
 
 impl InputProvider for UInputProvider {
-    fn mouse_move(&mut self, x: i32, y: i32) {
+    fn mouse_move(&mut self, pos: Vec2) {
         if self.mouse_moved {
             return;
         }
         self.mouse_moved = true;
 
-        let mul_x = MOUSE_EXTENT / self.desktop_extent[0];
-        let mul_y = MOUSE_EXTENT / self.desktop_extent[1];
+        let pos = pos * (MOUSE_EXTENT / self.desktop_extent);
 
         let time = get_time();
         let events = [
-            new_event(time, EV_ABS, AbsoluteAxis::X as _, x * mul_x),
-            new_event(time, EV_ABS, AbsoluteAxis::Y as _, y * mul_y),
+            new_event(time, EV_ABS, AbsoluteAxis::X as _, pos.x as i32),
+            new_event(time, EV_ABS, AbsoluteAxis::Y as _, pos.y as i32),
             new_event(time, EV_SYN, 0, 0),
         ];
         if let Err(res) = self.handle.write(&events) {
@@ -198,8 +198,8 @@ impl InputProvider for UInputProvider {
             error!("{}", res.to_string());
         }
     }
-    fn set_desktop_extent(&mut self, extent: [i32; 2]) {
-        info!("Desktop extent: {}x{}", extent[0], extent[1]);
+    fn set_desktop_extent(&mut self, extent: Vec2) {
+        info!("Desktop extent: {:?}", extent);
         self.desktop_extent = extent;
     }
     fn on_new_frame(&mut self) {
@@ -208,12 +208,12 @@ impl InputProvider for UInputProvider {
 }
 
 impl InputProvider for DummyProvider {
-    fn mouse_move(&mut self, _x: i32, _y: i32) {}
+    fn mouse_move(&mut self, _pos: Vec2) {}
     fn send_button(&self, _button: u16, _down: bool) {}
     fn wheel(&self, _delta: i32) {}
     fn set_modifiers(&mut self, _modifiers: u8) {}
     fn send_key(&self, _key: u16, _down: bool) {}
-    fn set_desktop_extent(&mut self, _extent: [i32; 2]) {}
+    fn set_desktop_extent(&mut self, _extent: Vec2) {}
     fn on_new_frame(&mut self) {}
 }
 

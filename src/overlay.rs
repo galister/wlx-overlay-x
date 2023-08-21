@@ -1,4 +1,4 @@
-use glam::{vec2, vec3, Affine3A, Mat3A, Quat, Vec3A, Vec3};
+use glam::{vec2, vec3, Affine3A, Mat3A, Quat, Vec3, Vec3A};
 use log::info;
 use stereokit::{
     sys::color32, Color128, Material, Mesh, RenderLayer, SkDraw, StereoKitDraw,
@@ -160,7 +160,7 @@ impl OverlayData {
     pub fn reset(&mut self, app: &mut AppState) {
         let spawn = app.input.hmd.transform_point3(self.spawn_point);
         self.transform = Affine3A::from_translation(spawn);
-        self.realign(&app.input.hmd) 
+        self.realign(&app.input.hmd)
     }
 
     pub fn render(&mut self, sk: &SkDraw, app: &mut AppState) {
@@ -181,7 +181,7 @@ impl OverlayData {
     }
 
     pub fn on_size(&mut self, delta: f32) {
-        let t = self.transform.matrix3.mul_scalar(1. - delta.powi(3) * 2.);
+        let t = self.transform.matrix3.mul_scalar(1. - delta.powi(3) * 0.05);
         let len_sq = t.x_axis.length_squared();
         if len_sq > 0.12 && len_sq < 100. {
             self.transform.matrix3 = t;
@@ -236,7 +236,8 @@ impl OverlayData {
         let col_y = col_z.cross(col_x).normalize();
         let col_x = col_x.normalize();
 
-        self.transform.matrix3 = Mat3A::from_cols(col_x, col_y, col_z).mul_scalar(scale);
+        let rot = Mat3A::from_quat(self.spawn_rotation);
+        self.transform.matrix3 = Mat3A::from_cols(col_x, col_y, col_z).mul_scalar(scale) * rot;
     }
 }
 

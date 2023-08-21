@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use std::{fs::create_dir, path::Path, collections::VecDeque, sync::Mutex};
+use std::{collections::VecDeque, fs::create_dir, path::Path, sync::Mutex};
 
 use desktop::{try_create_screen, wl_client::WlClientState};
 use gl::{egl::gl_init, GlRenderer, PANEL_SHADER_BYTES};
@@ -205,7 +205,7 @@ fn main() {
 
                 overlay.render(sk, &mut app);
             }
-            
+
             if let Ok(mut tasks) = TASKS.lock() {
                 while let Some(task) = tasks.pop_front() {
                     task(sk, &mut app, overlays.as_mut_slice());

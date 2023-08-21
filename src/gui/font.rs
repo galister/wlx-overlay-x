@@ -1,12 +1,14 @@
-use std::rc::Rc;
+use std::{rc::Rc, str::FromStr};
 
+use fontconfig::{FontConfig, OwnedPattern};
 use freetype::{bitmap::PixelMode, face::LoadFlag, Face, Library};
 use gles31::{
-    glBindBuffer, glBindTexture, glGetError, glTexImage2D, GL_NO_ERROR, GL_PIXEL_UNPACK_BUFFER,
-    GL_R8, GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_UNSIGNED_INT, GL_UNSIGNED_SHORT, glPixelStorei, GL_PACK_ALIGNMENT, GL_UNPACK_ALIGNMENT,
+    glBindBuffer, glBindTexture, glGetError, glPixelStorei, glTexImage2D, GL_NO_ERROR,
+    GL_PACK_ALIGNMENT, GL_PIXEL_UNPACK_BUFFER, GL_R8, GL_TEXTURE_2D, GL_UNPACK_ALIGNMENT,
+    GL_UNSIGNED_BYTE, GL_UNSIGNED_INT, GL_UNSIGNED_SHORT,
 };
 use idmap::IdMap;
-use rust_fontconfig::{FcFontCache, FcPattern, PatternMatch};
+use log::debug;
 use stereokit::{SkDraw, StereoKitMultiThread, Tex, TextureType};
 
 use crate::overlay::COLOR_FALLBACK;
@@ -15,7 +17,7 @@ const PRIMARY_FONT: &str = "LiberationSans";
 const GL_RED: u32 = 0x1903;
 
 pub struct FontCache {
-    fc: FcFontCache,
+    fc: FontConfig,
     ft: Library,
     collections: IdMap<isize, FontCollection>,
 }
@@ -45,7 +47,7 @@ pub struct Glyph {
 impl FontCache {
     pub fn new() -> Self {
         let ft = Library::init().expect("Failed to initialize freetype");
-        let fc = FcFontCache::build();
+        let fc = FontConfig::default();
 
         FontCache {
             fc,
@@ -99,22 +101,28 @@ impl FontCache {
             return *font;
         }
 
-        let maybe_path = self.fc.query(&FcPattern {
-            //family: Some(PRIMARY_FONT.to_string()),
-            italic: PatternMatch::False,
-            oblique: PatternMatch::False,
-            monospace: PatternMatch::False,
-            condensed: PatternMatch::False,
-            bold: PatternMatch::True,
-            unicode_range: [cp, cp],
-            ..Default::default()
-        });
+        let pattern_str = format!("{PRIMARY_FONT}-{size}:style=bold:charset={cp:04x}");
 
-        if let Some(path) = maybe_path {
-            // Load font
+        let mut pattern =
+            OwnedPattern::from_str(&pattern_str).expect("Failed to create fontconfig pattern");
+        self.fc
+            .substitute(&mut pattern, fontconfig::MatchKind::Pattern);
+        pattern.default_substitute();
+
+        let pattern = pattern.font_match(&mut self.fc);
+
+        if let Some(path) = pattern.filename() {
+            debug!(
+                "Loading font: {} {}pt",
+                pattern.name().unwrap_or(path),
+                size
+            );
+
+            let font_idx = pattern.face_index().unwrap_or(0);
+
             let face = self
                 .ft
-                .new_face(&path.path, path.font_index as _)
+                .new_face(path, font_idx as _)
                 .expect("Failed to load font face");
             face.set_char_size(size << 6, size << 6, 96, 96)
                 .expect("Failed to set font size");
@@ -143,9 +151,9 @@ impl FontCache {
 
             let font = Font {
                 face,
-                path: path.path.to_string(),
+                path: path.to_string(),
                 size,
-                index: path.font_index as _,
+                index: font_idx as _,
                 glyphs,
             };
             coll.fonts.push(font);
@@ -186,7 +194,13 @@ impl FontCache {
             _ => return font.glyphs[0].clone(),
         };
 
-        let tex = sk.tex_gen_color(COLOR_FALLBACK, bmp.width() as _, bmp.rows() as _, TextureType::IMAGE_NO_MIPS, stereokit::TextureFormat::R8);
+        let tex = sk.tex_gen_color(
+            COLOR_FALLBACK,
+            bmp.width() as _,
+            bmp.rows() as _,
+            TextureType::IMAGE_NO_MIPS,
+            stereokit::TextureFormat::R8,
+        );
         unsafe {
             let handle = sk.tex_get_surface(tex.as_ref()) as usize as u32;
             glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
@@ -214,7 +228,6 @@ impl FontCache {
             );
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
         }
-
 
         let g = Glyph {
             tex: Some(tex),

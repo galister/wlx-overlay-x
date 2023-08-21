@@ -1,13 +1,16 @@
-use std::{collections::VecDeque, mem::MaybeUninit};
+use std::{collections::VecDeque, mem::MaybeUninit, time::{Instant, Duration}};
 
-use glam::{vec2, Affine3A, Vec2, Vec3, vec3};
+use glam::{vec2, vec3, Affine3A, Vec2, Vec3};
 use log::debug;
 use stereokit::{
     ButtonState, Color32, CullMode, Handed, Pose, Ray, SkDraw, StereoKitDraw, StereoKitMultiThread,
     StereoKitSingleThread,
 };
 
-use crate::{overlay::{OverlayData, RelativeTo}, AppSession};
+use crate::{
+    overlay::{OverlayData, RelativeTo},
+    AppSession,
+};
 
 const HANDS: [Handed; 2] = [Handed::Left, Handed::Right];
 
@@ -43,6 +46,7 @@ pub struct PointerData {
     grabbed_idx: Option<usize>,
     clicked_idx: Option<usize>,
     hovered_idx: Option<usize>,
+    next_push: Instant,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -78,12 +82,24 @@ impl InputState {
         for overlay in interactables.iter_mut() {
             match overlay.relative_to {
                 RelativeTo::Head => {
-                    let scale = Affine3A::from_scale(vec3(overlay.width, overlay.width, overlay.width));
-                    overlay.transform = self.hmd * Affine3A::from_rotation_translation(overlay.spawn_rotation, overlay.spawn_point) * scale;
+                    let scale =
+                        Affine3A::from_scale(vec3(overlay.width, overlay.width, overlay.width));
+                    overlay.transform = self.hmd
+                        * Affine3A::from_rotation_translation(
+                            overlay.spawn_rotation,
+                            overlay.spawn_point,
+                        )
+                        * scale;
                 }
                 RelativeTo::Hand(h) => {
-                    let scale = Affine3A::from_scale(vec3(overlay.width, overlay.width, overlay.width));
-                    overlay.transform = self.pointers[h].pose3a * Affine3A::from_rotation_translation(overlay.spawn_rotation, overlay.spawn_point) * scale;
+                    let scale =
+                        Affine3A::from_scale(vec3(overlay.width, overlay.width, overlay.width));
+                    overlay.transform = self.pointers[h].pose3a
+                        * Affine3A::from_rotation_translation(
+                            overlay.spawn_rotation,
+                            overlay.spawn_point,
+                        )
+                        * scale;
                 }
                 _ => {}
             }
@@ -110,12 +126,14 @@ impl PointerData {
             grabbed_offset: (Vec3::ZERO, Vec3::ZERO),
             hovered_idx: None,
             colors: [session.color_norm, session.color_shift, session.color_alt],
+            next_push: Instant::now(),
         }
     }
     fn update(&mut self, hmd: &Pose, sk: &SkDraw) {
         let con = sk.input_controller(HANDS[self.hand]);
         self.pose = con.aim;
-        self.pose3a = Affine3A::from_rotation_translation(self.pose.orientation, self.pose.position);
+        self.pose3a =
+            Affine3A::from_rotation_translation(self.pose.orientation, self.pose.position);
 
         self.before = self.now;
         self.now.click = con.trigger > 0.5;
@@ -133,18 +151,21 @@ impl PointerData {
             }
         }
 
-        let hmd_up = hmd.orientation.mul_vec3(Vec3::Y);
-        let dot = hmd_up.dot(con.palm.forward());
-        self.mode = if dot < -0.85 {
-            POINTER_ALT // palm up
-        } else if dot > 0.6 {
-            POINTER_SHIFT // palm down
-        } else {
+        let from_hmd = con.palm.position - hmd.position;
+        let dot = from_hmd.dot(con.palm.forward());
+        self.mode = if dot > 0.2 {
             POINTER_NORM // neutral
+        } else {
+            POINTER_SHIFT // palm down
         }
     }
 
-    fn test_interactions(&mut self, hmd3a: &Affine3A, sk: &SkDraw, interactables: &mut [OverlayData]) {
+    fn test_interactions(
+        &mut self,
+        hmd3a: &Affine3A,
+        sk: &SkDraw,
+        interactables: &mut [OverlayData],
+    ) {
         let color = self.colors[self.mode as usize];
 
         // Grabbing an overlay
@@ -161,24 +182,37 @@ impl PointerData {
                 // drop and continue
             } else {
                 if self.now.scroll.abs() > 0.1 {
-                    if self.mode == POINTER_ALT {
-                        debug!("Pointer {}: Resize {}", self.hand, grabbed.name);
-                        grabbed.on_size(self.now.scroll);
-                    } else {
+                    if self.mode == POINTER_SHIFT {
+                        if self.next_push < Instant::now() {
+                            debug!("Pointer {}: Resize {}", self.hand, grabbed.name);
+                            grabbed.on_size(self.now.scroll);
+                            self.next_push = Instant::now() + Duration::from_millis(33);
+                        }
+                    } else if self.next_push < Instant::now() {
                         debug!("Pointer {}: Push/pull {}", self.hand, grabbed.name);
                         let offset = self.grabbed_offset.0
-                            + self.grabbed_offset.0.normalize_or_zero() * self.now.scroll * 0.2;
+                            + self.grabbed_offset.0.normalize_or_zero() * self.now.scroll * 0.1;
                         let len_sq = offset.length_squared();
                         if len_sq > 0.20 && len_sq < 100. {
                             self.grabbed_offset.0 = offset;
                         }
+                        self.next_push = Instant::now() + Duration::from_millis(33);
                     }
                 }
                 sk.hierarchy_push(self.pose3a);
                 let grab_point = sk.hierarchy_to_world_point(self.grabbed_offset.0);
                 grabbed.on_move(grab_point.into(), hmd3a);
                 sk.hierarchy_pop();
-                sk.line_add(self.pose.position, grab_point, color, color, 0.002);
+
+                let mut points = vec![];
+                sk.hierarchy_push(grabbed.transform);
+                points.push(sk.hierarchy_to_world_point(vec3(-1., 0., 0.)));
+                points.push(sk.hierarchy_to_world_point(vec3(1., 0., 0.)));
+                sk.hierarchy_pop();
+
+                for p in points.iter() {
+                    sk.line_add(self.pose.position, *p, color, color, 0.002);
+                }
 
                 if self.now.click && !self.before.click {
                     debug!("Pointer {}: on_curve {}", self.hand, grabbed.name);
@@ -223,7 +257,10 @@ impl PointerData {
             }
         }
 
-        if let Some(hit) = hits[..num_hits].iter().max_by(|a, b| a.dist.total_cmp(&b.dist)) {
+        if let Some(hit) = hits[..num_hits]
+            .iter()
+            .max_by(|a, b| a.dist.total_cmp(&b.dist))
+        {
             let now_idx = hit.idx;
             let mut hit_data = PointerHit {
                 hand: self.hand,
@@ -305,13 +342,16 @@ impl PointerData {
             if !self.now.click && self.before.click {
                 if let Some(clicked_idx) = self.clicked_idx.take() {
                     let clicked = &mut interactables[clicked_idx];
-                    clicked.backend.on_pointer(&PointerHit {
-                        hand: self.hand,
-                        mode: self.mode,
-                        uv: vec2(0., 0.),
-                        dist: 0.,
-                        primary: true,
-                    }, false);
+                    clicked.backend.on_pointer(
+                        &PointerHit {
+                            hand: self.hand,
+                            mode: self.mode,
+                            uv: vec2(0., 0.),
+                            dist: 0.,
+                            primary: true,
+                        },
+                        false,
+                    );
                 }
             }
         }

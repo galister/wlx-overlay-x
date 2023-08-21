@@ -5,7 +5,8 @@ use glam::{Quat, Vec3};
 
 use crate::{
     gui::{color_parse, Canvas},
-    overlay::{OverlayData, RelativeTo}, AppSession, TASKS,
+    overlay::{OverlayData, RelativeTo},
+    AppSession, TASKS,
 };
 
 pub const WATCH_DEFAULT_POS: Vec3 = Vec3::new(0., 0., 0.15);
@@ -60,7 +61,7 @@ pub fn create_watch(session: &AppSession, screens: Vec<(usize, String)>) -> Over
     canvas.bg_color = color_parse("#303030");
     canvas.fg_color = color_parse("#353535");
 
-    let settings = canvas.button(2., 162., 36., 36., "Cfg".to_string());
+    let settings = canvas.button(2., 162., 36., 36., "☰".to_string());
     canvas.controls[settings].on_press = Some(|_control, _data| {
         println!("Settings!"); //TODO
     });
@@ -74,7 +75,10 @@ pub fn create_watch(session: &AppSession, screens: Vec<(usize, String)>) -> Over
 
     let i = canvas.button(button_x + 2., 162., button_width - 4., 36., "Kbd".to_string());
     let keyboard = &mut canvas.controls[i];
-    keyboard.state = Some(WatchButtonState { pressed_at: Instant::now(), scr_idx: 0 });
+    keyboard.state = Some(WatchButtonState {
+        pressed_at: Instant::now(),
+        scr_idx: 0,
+    });
 
     keyboard.on_press = Some(|control, _data| {
         if let Some(state) = control.state.as_mut() {
@@ -83,8 +87,12 @@ pub fn create_watch(session: &AppSession, screens: Vec<(usize, String)>) -> Over
     });
     keyboard.on_release = Some(|control, _data| {
         if let Some(state) = control.state.as_ref() {
-            if let Ok(mut tasks) = TASKS.lock(){
-                if Instant::now().saturating_duration_since(state.pressed_at).as_millis() < 2000 {
+            if let Ok(mut tasks) = TASKS.lock() {
+                if Instant::now()
+                    .saturating_duration_since(state.pressed_at)
+                    .as_millis()
+                    < 2000
+                {
                     tasks.push_back(Box::new(|_sk, _app, o| {
                         for overlay in o {
                             if overlay.name == "Kbd" {
@@ -112,7 +120,10 @@ pub fn create_watch(session: &AppSession, screens: Vec<(usize, String)>) -> Over
     for (scr_idx, scr_name) in screens.into_iter() {
         let i = canvas.button(button_x + 2., 162., button_width - 4., 36., scr_name);
         let button = &mut canvas.controls[i];
-        button.state = Some(WatchButtonState { pressed_at: Instant::now(), scr_idx });
+        button.state = Some(WatchButtonState {
+            pressed_at: Instant::now(),
+            scr_idx,
+        });
 
         button.on_press = Some(|control, _data| {
             if let Some(state) = control.state.as_mut() {
@@ -120,15 +131,19 @@ pub fn create_watch(session: &AppSession, screens: Vec<(usize, String)>) -> Over
             }
         });
         button.on_release = Some(|control, _data| {
-        if let Some(state) = control.state.as_ref() {
-                if let Ok(mut tasks) = TASKS.lock(){
+            if let Some(state) = control.state.as_ref() {
+                if let Ok(mut tasks) = TASKS.lock() {
                     let scr_idx = state.scr_idx;
-                    if Instant::now().saturating_duration_since(state.pressed_at).as_millis() < 2000 {
-                        tasks.push_back(Box::new(move |_sk, _app, o| { 
+                    if Instant::now()
+                        .saturating_duration_since(state.pressed_at)
+                        .as_millis()
+                        < 2000
+                    {
+                        tasks.push_back(Box::new(move |_sk, _app, o| {
                             o[scr_idx].want_visible = !o[scr_idx].want_visible;
                         }));
                     } else {
-                        tasks.push_back(Box::new(move |_sk, app, o| { 
+                        tasks.push_back(Box::new(move |_sk, app, o| {
                             o[scr_idx].reset(app);
                         }));
                     }
@@ -157,4 +172,3 @@ struct WatchButtonState {
     pressed_at: Instant,
     scr_idx: usize,
 }
-
