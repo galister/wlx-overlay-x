@@ -27,6 +27,10 @@ You'll see a screen and keyboard. You can turn these on and off using the watch 
 
 Right click: turn your controller so that your backhand is facing your hmd. You'll get a yellow laser. Pull trigger for right-click.
 
+Move screen: Grab using grip. Adjust distace using stick up/down while gripping.
+
+Resize screen: Same as Move screen but turn your controller to get the yellow laser.
+
 # Reporting Issues
 
 Make sure to:
