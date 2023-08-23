@@ -136,8 +136,8 @@ impl PointerData {
             Affine3A::from_rotation_translation(self.pose.orientation, self.pose.position);
 
         self.before = self.now;
-        self.now.click = con.trigger > 0.5;
-        self.now.grab = con.grip > 0.5;
+        self.now.click = if self.before.click { con.trigger > 0.5 } else { con.trigger > 0.6 };
+        self.now.grab = if self.before.grab { con.grip > 0.5 } else { con.grip > 0.6 };
         self.now.show_hide = if self.hand == 0 {
             sk.input_controller_menu() == ButtonState::ACTIVE
         } else {

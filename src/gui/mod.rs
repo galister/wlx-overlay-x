@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use glam::{Vec2, Vec3};
 use stereokit::{SkDraw, StereoKitMultiThread, Tex, TextureFormat, TextureType};
 
@@ -86,7 +88,7 @@ impl<T1, T2> Canvas<T1, T2> {
     }
 
     // Creates a label with fg_color, font_size inherited from the canvas
-    pub fn label(&mut self, x: f32, y: f32, w: f32, h: f32, text: String) -> usize {
+    pub fn label(&mut self, x: f32, y: f32, w: f32, h: f32, text: Arc<str>) -> usize {
         self.controls.push(Control {
             rect: Rect { x, y, w, h },
             text,
@@ -99,7 +101,7 @@ impl<T1, T2> Canvas<T1, T2> {
     }
 
     // Creates a label with fg_color, font_size inherited from the canvas
-    pub fn label_centered(&mut self, x: f32, y: f32, w: f32, h: f32, text: String) -> usize {
+    pub fn label_centered(&mut self, x: f32, y: f32, w: f32, h: f32, text: Arc<str>) -> usize {
         self.controls.push(Control {
             rect: Rect { x, y, w, h },
             text,
@@ -112,7 +114,7 @@ impl<T1, T2> Canvas<T1, T2> {
     }
 
     // Creates a button with fg_color, bg_color, font_size inherited from the canvas
-    pub fn button(&mut self, x: f32, y: f32, w: f32, h: f32, text: String) -> usize {
+    pub fn button(&mut self, x: f32, y: f32, w: f32, h: f32, text: Arc<str>) -> usize {
         let idx = self.controls.len();
 
         self.interactive_set_idx(x, y, w, h, idx);
@@ -161,7 +163,7 @@ impl<T1, T2> Canvas<T1, T2> {
                         h,
                     }
                 },
-                text: item.clone(),
+                text: Arc::from(item.as_str()),
                 fg_color: self.fg_color,
                 size: self.font_size,
                 on_render_fg: Some(Control::render_text),
@@ -332,7 +334,7 @@ pub struct Control<T1, T2> {
     rect: Rect,
     fg_color: Vec3,
     bg_color: Vec3,
-    text: String,
+    text: Arc<str>,
     size: isize,
     dirty: bool,
 
@@ -357,7 +359,7 @@ impl<T1, T2> Default for Control<T1, T2> {
             },
             fg_color: Vec3::ONE,
             bg_color: Vec3::ZERO,
-            text: String::new(),
+            text: Arc::from(""),
             dirty: false,
             size: 24,
             state: None,
@@ -374,11 +376,11 @@ impl<T1, T2> Default for Control<T1, T2> {
 
 impl<T1, T2> Control<T1, T2> {
     #[inline(always)]
-    pub fn set_text(&mut self, text: String) {
-        if self.text == text {
+    pub fn set_text(&mut self, text: &str) {
+        if *self.text == *text {
             return;
         }
-        self.text = text;
+        self.text = text.into();
         self.dirty = true;
     }
 

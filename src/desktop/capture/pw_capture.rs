@@ -89,7 +89,7 @@ impl StreamData {
 }
 
 pub struct PipewireCapture {
-    name: Arc<String>,
+    name: Arc<str>,
     node_id: u32,
     fps: u32,
     dmabuf: bool,
@@ -129,9 +129,9 @@ impl OverlayRenderer for PipewireCapture {
 }
 
 impl PipewireCapture {
-    pub fn new(name: String, node_id: u32, fps: u32, dmabuf: bool) -> Self {
+    pub fn new(name: Arc<str>, node_id: u32, fps: u32, dmabuf: bool) -> Self {
         PipewireCapture {
-            name: Arc::new(name),
+            name,
             node_id,
             fps,
             dmabuf,
@@ -152,7 +152,7 @@ impl PipewireCapture {
 }
 
 fn main_loop(
-    name: Arc<String>,
+    name: Arc<str>,
     node_id: u32,
     fps: u32,
     dmabuf: bool,

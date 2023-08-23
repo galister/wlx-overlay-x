@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::{time::Instant, sync::Arc};
 
 use chrono::Local;
 use glam::{Quat, Vec3};
@@ -12,8 +12,9 @@ use crate::{
 pub const WATCH_DEFAULT_POS: Vec3 = Vec3::new(0., 0., 0.15);
 pub const WATCH_DEFAULT_ROT: Quat = Quat::from_xyzw(0.7071066, 0., 0.7071066, 0.0007963);
 
-pub fn create_watch(session: &AppSession, screens: Vec<(usize, String)>) -> OverlayData {
+pub fn create_watch(session: &AppSession, screens: Vec<(usize, Arc<str>)>) -> OverlayData {
     let mut canvas = Canvas::new(400, 200, ());
+    let empty_str: Arc<str> = Arc::from("");
 
     // Background
     canvas.bg_color = color_parse("#353535");
@@ -21,23 +22,23 @@ pub fn create_watch(session: &AppSession, screens: Vec<(usize, String)>) -> Over
 
     // Time display
     canvas.font_size = 46;
-    let clock = canvas.label(19., 100., 200., 50., String::new());
+    let clock = canvas.label(19., 100., 200., 50., empty_str.clone());
     canvas.controls[clock].on_update = Some(|control, _data| {
         let date = Local::now();
-        control.set_text(format!("{}", &date.format("%H:%M")));
+        control.set_text(&format!("{}", &date.format("%H:%M")));
     });
 
     canvas.font_size = 14;
-    let date = canvas.label(20., 125., 200., 50., String::new());
+    let date = canvas.label(20., 125., 200., 50., empty_str.clone());
     canvas.controls[date].on_update = Some(|control, _data| {
         let date = Local::now();
-        control.set_text(format!("{}", &date.format("%x")));
+        control.set_text(&format!("{}", &date.format("%x")));
     });
 
-    let day_of_week = canvas.label(20., 150., 200., 50., String::new());
+    let day_of_week = canvas.label(20., 150., 200., 50., empty_str);
     canvas.controls[day_of_week].on_update = Some(|control, _data| {
         let date = Local::now();
-        control.set_text(format!("{}", &date.format("%A")));
+        control.set_text(&format!("{}", &date.format("%A")));
     });
 
     // Volume controls
@@ -48,12 +49,12 @@ pub fn create_watch(session: &AppSession, screens: Vec<(usize, String)>) -> Over
     canvas.bg_color = color_parse("#303030");
     canvas.fg_color = color_parse("#353535");
 
-    let vol_up = canvas.button(327., 116., 46., 32., String::from("+"));
+    let vol_up = canvas.button(327., 116., 46., 32., "+".into());
     canvas.controls[vol_up].on_press = Some(|_control, _data| {
         println!("Volume up!"); //TODO
     });
 
-    let vol_dn = canvas.button(327., 52., 46., 32., String::from("-"));
+    let vol_dn = canvas.button(327., 52., 46., 32., "-".into());
     canvas.controls[vol_dn].on_press = Some(|_control, _data| {
         println!("Volume down!"); //TODO
     });
@@ -61,7 +62,7 @@ pub fn create_watch(session: &AppSession, screens: Vec<(usize, String)>) -> Over
     canvas.bg_color = color_parse("#303030");
     canvas.fg_color = color_parse("#353535");
 
-    let settings = canvas.button(2., 162., 36., 36., "☰".to_string());
+    let settings = canvas.button(2., 162., 36., 36., "☰".into());
     canvas.controls[settings].on_press = Some(|_control, _data| {
         println!("Settings!"); //TODO
     });
@@ -73,7 +74,7 @@ pub fn create_watch(session: &AppSession, screens: Vec<(usize, String)>) -> Over
     let button_width = 360. / num_buttons as f32;
     let mut button_x = 40.;
 
-    let i = canvas.button(button_x + 2., 162., button_width - 4., 36., "Kbd".to_string());
+    let i = canvas.button(button_x + 2., 162., button_width - 4., 36., "Kbd".into());
     let keyboard = &mut canvas.controls[i];
     keyboard.state = Some(WatchButtonState {
         pressed_at: Instant::now(),
@@ -95,7 +96,7 @@ pub fn create_watch(session: &AppSession, screens: Vec<(usize, String)>) -> Over
                 {
                     tasks.push_back(Box::new(|_sk, _app, o| {
                         for overlay in o {
-                            if overlay.name == "Kbd" {
+                            if &*overlay.name == "Kbd" {
                                 overlay.want_visible = !overlay.want_visible;
                                 return;
                             }
@@ -104,7 +105,7 @@ pub fn create_watch(session: &AppSession, screens: Vec<(usize, String)>) -> Over
                 } else {
                     tasks.push_back(Box::new(|_sk, app, o| {
                         for overlay in o {
-                            if overlay.name == "Kbd" {
+                            if &*overlay.name == "Kbd" {
                                 overlay.reset(app);
                             }
                         }
@@ -156,7 +157,7 @@ pub fn create_watch(session: &AppSession, screens: Vec<(usize, String)>) -> Over
     let relative_to = RelativeTo::Hand(session.watch_hand);
 
     OverlayData {
-        name: "Watch".to_string(),
+        name: "Watch".into(),
         size: (400, 200),
         width: 0.065,
         backend: Box::new(canvas),

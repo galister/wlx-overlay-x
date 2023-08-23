@@ -29,8 +29,8 @@ use super::frame::{DmabufFrame, FRAME_PENDING, FRAME_READY};
 pub struct OutputState {
     pub wl_output: WlOutput,
     pub id: u32,
-    pub name: String,
-    pub model: String,
+    pub name: Arc<str>,
+    pub model: Arc<str>,
     pub size: (i32, i32),
     pub logical_pos: Vec2,
     pub logical_size: Vec2,
@@ -71,12 +71,14 @@ impl WlClientState {
                 let wl_output: WlOutput = globals.registry().bind(o.name, o.version, &qh, o.name);
 
                 state.xdg_output_mgr.get_xdg_output(&wl_output, &qh, o.name);
+                
+                let unknown : Arc<str> = "Unknown".into();
 
                 let output = OutputState {
                     wl_output,
                     id: o.name,
-                    name: String::new(),
-                    model: String::new(),
+                    name: unknown.clone(),
+                    model: unknown,
                     size: (0, 0),
                     logical_pos: Vec2::ZERO,
                     logical_size: Vec2::ZERO,
@@ -134,7 +136,7 @@ impl Dispatch<ZxdgOutputV1, u32> for WlClientState {
         match event {
             zxdg_output_v1::Event::Name { name } => {
                 if let Some(output) = state.outputs.iter_mut().find(|o| o.id == *data) {
-                    output.name = name;
+                    output.name = name.into();
                 }
             }
             zxdg_output_v1::Event::LogicalPosition { x, y } => {
@@ -185,7 +187,7 @@ impl Dispatch<WlOutput, u32> for WlClientState {
                 model, transform, ..
             } => {
                 if let Some(output) = state.outputs.iter_mut().find(|o| o.id == *data) {
-                    output.model = model;
+                    output.model = model.into();
                     output.transform = transform.into_result().unwrap_or(Transform::Normal);
                 }
             }

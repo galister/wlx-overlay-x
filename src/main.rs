@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use std::{collections::VecDeque, fs::create_dir, path::Path, sync::Mutex};
+use std::{collections::VecDeque, fs::create_dir, path::Path, sync::{Mutex, Arc}};
 
 use desktop::{try_create_screen, wl_client::WlClientState};
 use gl::{egl::gl_init, GlRenderer, PANEL_SHADER_BYTES};
@@ -156,7 +156,7 @@ fn main() {
     gl_init(&sk);
 
     let mut overlays: Vec<OverlayData> = vec![];
-    let mut screens: Vec<(usize, String)> = vec![];
+    let mut screens: Vec<(usize, Arc<str>)> = vec![];
 
     let wl = WlClientState::new();
 
@@ -173,7 +173,7 @@ fn main() {
     for i in 0..wl.outputs.len() {
         let maybe_screen = rt.block_on(try_create_screen(&wl, i, &session));
         if let Some(mut screen) = maybe_screen {
-            screen.want_visible = session.show_screens.contains(&screen.name);
+            screen.want_visible = session.show_screens.iter().any(|s| s == &*screen.name);
 
             screens.push((overlays.len(), screen.name.clone()));
             overlays.push(screen);

@@ -5,7 +5,7 @@ use std::{
     io::Cursor,
     path::PathBuf,
     process::{Child, Command},
-    str::FromStr,
+    str::FromStr, sync::Arc,
 };
 
 use crate::{
@@ -99,7 +99,7 @@ pub fn create_keyboard() -> OverlayData {
     }
 
     OverlayData {
-        name: "Kbd".to_string(),
+        name: Arc::from("Kbd"),
         show_hide: true,
         width: LAYOUT.row_size * 0.05,
         size: (canvas.width as _, canvas.height as _),

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use glam::{vec2, vec3, Affine3A, Mat3A, Quat, Vec3, Vec3A};
 use log::info;
 use stereokit::{
@@ -30,7 +32,7 @@ pub const COLOR_TRANSPARENT: Color128 = Color128 {
 };
 
 pub struct OverlayData {
-    pub name: String,
+    pub name: Arc<str>,
     pub width: f32,
     pub size: (i32, i32),
     pub visible: bool,
@@ -290,7 +292,7 @@ impl InteractionHandler for SplitOverlayBackend {
 impl Default for OverlayData {
     fn default() -> OverlayData {
         OverlayData {
-            name: String::new(),
+            name: Arc::from(""),
             width: 1.,
             size: (0, 0),
             visible: false,
