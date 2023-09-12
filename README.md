@@ -31,6 +31,10 @@ Move screen: Grab using grip. Adjust distace using stick up/down while gripping.
 
 Resize screen: Same as Move screen but turn your controller to get the yellow laser.
 
+# Known Issues
+
+StereoKit fails to build with OpenXR version 1.0.29. You can downgrade your OpenXR syetem package to fix this.
+
 # Reporting Issues
 
 Make sure to:
