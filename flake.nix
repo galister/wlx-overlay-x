@@ -27,6 +27,8 @@
           default = config.packages.wlx-overlay-x;
           wlx-overlay-x = pkgs.callPackage ./nix/derivation.nix {inherit self version;};
         };
+
+        formatter = pkgs.alejandra;
       };
     };
 }
