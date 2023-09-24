@@ -31,6 +31,12 @@ Move screen: Grab using grip. Adjust distace using stick up/down while gripping.
 
 Resize screen: Same as Move screen but turn your controller to get the yellow laser.
 
+## Nix Flake
+
+A Nix Flake is availabe as `github:galister/wlx-overlay-x`. Cached builds are available using [garnix](https://garnix.io/). See [garnix docs](https://garnix.io/docs/caching) to see how to utilize this binary cache.
+
+Run `nix flake show github:galister/wlx-overlay-x` to see all outputs of this flake.
+
 # Known Issues
 
 StereoKit fails to build with OpenXR version 1.0.29. You can downgrade your OpenXR syetem package to fix this.
