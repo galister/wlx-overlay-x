@@ -1,5 +1,8 @@
 #![allow(dead_code)]
-use std::{collections::VecDeque, fs::create_dir, path::Path, sync::{Mutex, Arc}};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, Mutex},
+};
 
 use desktop::{try_create_screen, wl_client::WlClientState};
 use gl::{egl::gl_init, GlRenderer, PANEL_SHADER_BYTES};
@@ -8,13 +11,13 @@ use gui::font::FontCache;
 use input::INPUT;
 use interactions::InputState;
 use keyboard::create_keyboard;
-use log::error;
 use once_cell::sync::Lazy;
 use overlay::OverlayData;
 use stereokit::*;
 use tokio::runtime::{Builder, Runtime};
 use watch::{create_watch, WATCH_DEFAULT_POS, WATCH_DEFAULT_ROT};
 
+mod config;
 mod desktop;
 mod gl;
 mod gui;
@@ -56,19 +59,8 @@ pub struct AppSession {
 
 impl AppSession {
     pub fn load() -> AppSession {
-        let config_path: String;
-
-        if let Ok(home) = std::env::var("HOME") {
-            config_path = Path::new(&home)
-                .join(".config/wlxroverlay")
-                .to_str()
-                .unwrap()
-                .to_string();
-        } else {
-            config_path = "/tmp/wlxroverlay".to_string();
-            error!("Err: $HOME is not set, using {}", config_path);
-        }
-        let _ = create_dir(&config_path);
+        let config_path = config::get_config_root();
+        println!("Config path: {}", config_path);
 
         AppSession {
             config_path,
