@@ -115,6 +115,12 @@ pub struct AppState {
     session: AppSession,
 }
 
+impl AppState {
+    fn update_input(&mut self, sk: &SkDraw, interactables: &mut [OverlayData]) {
+        self.input.update(&self.session, sk, interactables);
+    }
+}
+
 fn main() {
     let sk = stereokit::Settings {
         app_name: "WlXrOverlay".to_string(),
@@ -187,7 +193,7 @@ fn main() {
 
     sk.run(
         |sk| {
-            app.input.update(sk, overlays.as_mut_slice());
+            app.update_input(sk, overlays.as_mut_slice());
 
             for overlay in overlays.iter_mut() {
                 if overlay.want_visible && !overlay.visible {

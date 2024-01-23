@@ -9,7 +9,7 @@ use stereokit::{
 
 use crate::{
     interactions::{DummyInteractionHandler, InteractionHandler},
-    AppState,
+    AppSession, AppState,
 };
 
 pub const COLOR_WHITE: Color128 = Color128 {
@@ -284,8 +284,13 @@ impl InteractionHandler for SplitOverlayBackend {
     fn on_scroll(&mut self, hit: &crate::interactions::PointerHit, delta: f32) {
         self.interaction.on_scroll(hit, delta);
     }
-    fn on_pointer(&mut self, hit: &crate::interactions::PointerHit, pressed: bool) {
-        self.interaction.on_pointer(hit, pressed);
+    fn on_pointer(
+        &mut self,
+        session: &AppSession,
+        hit: &crate::interactions::PointerHit,
+        pressed: bool,
+    ) {
+        self.interaction.on_pointer(session, hit, pressed);
     }
 }
 

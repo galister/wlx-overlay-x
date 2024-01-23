@@ -70,11 +70,8 @@ impl InteractionHandler for ScreenInteractionHandler {
             }
         }
     }
-    fn on_pointer(&mut self, hit: &PointerHit, pressed: bool) {
+    fn on_pointer(&mut self, session: &AppSession, hit: &PointerHit, pressed: bool) {
         if let Ok(mut input) = INPUT.lock() {
-            let pos = self.mouse_transform.transform_point2(hit.uv);
-            input.mouse_move(pos);
-
             let btn = match hit.mode {
                 POINTER_SHIFT => MOUSE_RIGHT,
                 POINTER_ALT => MOUSE_MIDDLE,
@@ -82,10 +79,14 @@ impl InteractionHandler for ScreenInteractionHandler {
             };
 
             if pressed {
-                self.next_move = Instant::now() + Duration::from_millis(300);
+                self.next_move =
+                    Instant::now() + Duration::from_millis(session.click_freeze_time_ms);
             }
 
             input.send_button(btn, pressed);
+
+            let pos = self.mouse_transform.transform_point2(hit.uv);
+            input.mouse_move(pos);
         }
     }
     fn on_scroll(&mut self, _hit: &PointerHit, delta: f32) {
