@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 use std::{
     collections::VecDeque,
+    path::PathBuf,
     sync::{Arc, Mutex},
 };
 
@@ -31,7 +32,7 @@ pub type Task = Box<dyn FnOnce(&SkDraw, &mut AppState, &mut [OverlayData]) + Sen
 pub static TASKS: Lazy<Mutex<VecDeque<Task>>> = Lazy::new(|| Mutex::new(VecDeque::new()));
 
 pub struct AppSession {
-    pub config_path: String,
+    pub config_root_path: PathBuf,
 
     pub show_screens: Vec<String>,
     pub show_keyboard: bool,
@@ -59,11 +60,11 @@ pub struct AppSession {
 
 impl AppSession {
     pub fn load() -> AppSession {
-        let config_path = config::get_config_root();
-        println!("Config path: {}", config_path);
+        let config_root_path = config::ensure_config_root();
+        println!("Config root path: {}", config_root_path.to_string_lossy());
 
         AppSession {
-            config_path,
+            config_root_path,
             show_screens: vec!["DP-3".to_string()],
             keyboard_volume: 0.5,
             show_keyboard: false,
