@@ -1,4 +1,8 @@
-use std::{collections::VecDeque, mem::MaybeUninit, time::{Instant, Duration}};
+use std::{
+    collections::VecDeque,
+    mem::MaybeUninit,
+    time::{Duration, Instant},
+};
 
 use glam::{vec2, vec3, Affine3A, Vec2, Vec3};
 use log::debug;
@@ -24,7 +28,7 @@ pub const POINTER_ALT: u16 = 2;
 pub trait InteractionHandler {
     fn on_hover(&mut self, hit: &PointerHit);
     fn on_left(&mut self, hand: usize);
-    fn on_pointer(&mut self, hit: &PointerHit, pressed: bool);
+    fn on_pointer(&mut self, session: &AppSession, hit: &PointerHit, pressed: bool);
     fn on_scroll(&mut self, hit: &PointerHit, delta: f32);
 }
 
@@ -51,8 +55,8 @@ pub struct PointerData {
 
 #[derive(Debug, Clone, Copy)]
 pub struct PointerState {
-    click: bool,
-    grab: bool,
+    pressed: bool,
+    grabbing: bool,
     show_hide: bool,
     scroll: f32,
 }
@@ -72,7 +76,8 @@ impl InputState {
             pointers: [PointerData::new(session, 0), PointerData::new(session, 1)],
         }
     }
-    pub fn update(&mut self, sk: &SkDraw, interactables: &mut [OverlayData]) {
+
+    pub fn update(&mut self, session: &AppSession, sk: &SkDraw, interactables: &mut [OverlayData]) {
         let hmd_pose = sk.input_head();
         self.hmd = Affine3A::from_rotation_translation(hmd_pose.orientation, hmd_pose.position);
         for h in 0..2 {
@@ -106,7 +111,7 @@ impl InputState {
         }
 
         for h in 0..2 {
-            self.pointers[h].test_interactions(&self.hmd, sk, interactables);
+            self.pointers[h].test_interactions(session, &self.hmd, sk, interactables);
         }
     }
 }
@@ -129,6 +134,7 @@ impl PointerData {
             next_push: Instant::now(),
         }
     }
+
     fn update(&mut self, hmd: &Pose, sk: &SkDraw) {
         let con = sk.input_controller(HANDS[self.hand]);
         self.pose = con.aim;
@@ -136,8 +142,18 @@ impl PointerData {
             Affine3A::from_rotation_translation(self.pose.orientation, self.pose.position);
 
         self.before = self.now;
-        self.now.click = if self.before.click { con.trigger > 0.5 } else { con.trigger > 0.6 };
-        self.now.grab = if self.before.grab { con.grip > 0.5 } else { con.grip > 0.6 };
+        self.now.pressed = if self.before.pressed {
+            con.trigger > 0.5
+        } else {
+            con.trigger > 0.6
+        };
+
+        self.now.grabbing = if self.before.grabbing {
+            con.grip > 0.5
+        } else {
+            con.grip > 0.6
+        };
+
         self.now.show_hide = if self.hand == 0 {
             sk.input_controller_menu() == ButtonState::ACTIVE
         } else {
@@ -145,7 +161,8 @@ impl PointerData {
         };
         self.now.scroll = con.stick.y;
 
-        if self.before.click && !self.now.click {
+        // If unpressed (true -> false)
+        if self.before.pressed && !self.now.pressed {
             while let Some(action) = self.release_actions.pop_front() {
                 action();
             }
@@ -162,6 +179,7 @@ impl PointerData {
 
     fn test_interactions(
         &mut self,
+        session: &AppSession,
         hmd3a: &Affine3A,
         sk: &SkDraw,
         interactables: &mut [OverlayData],
@@ -175,7 +193,7 @@ impl PointerData {
                 debug!("Pointer {}: Grab lost on {}", self.hand, grabbed.name);
                 self.grabbed_idx = None;
                 // ignore and continue
-            } else if !self.now.grab {
+            } else if !self.now.grabbing {
                 debug!("Pointer {}: Dropped {}", self.hand, grabbed.name);
                 self.grabbed_idx = None;
                 grabbed.on_drop();
@@ -214,7 +232,7 @@ impl PointerData {
                     sk.line_add(self.pose.position, *p, color, color, 0.002);
                 }
 
-                if self.now.click && !self.before.click {
+                if self.now.pressed && !self.before.pressed {
                     debug!("Pointer {}: on_curve {}", self.hand, grabbed.name);
                     grabbed.on_curve();
                 }
@@ -289,7 +307,7 @@ impl PointerData {
             sk.hierarchy_pop();
 
             // grab start
-            if self.now.grab && !self.before.grab && overlay.grabbable {
+            if self.now.grabbing && !self.before.grabbing && overlay.grabbable {
                 overlay.primary_pointer = Some(self.hand);
                 let mat =
                     Affine3A::from_rotation_translation(self.pose.orientation, self.pose.position);
@@ -315,17 +333,17 @@ impl PointerData {
                 overlay.backend.on_scroll(&hit_data, self.now.scroll);
             }
 
-            if self.now.click && !self.before.click {
+            if self.now.pressed && !self.before.pressed {
                 overlay.primary_pointer = Some(self.hand);
                 hit_data.primary = true;
                 self.clicked_idx = Some(now_idx);
-                overlay.backend.on_pointer(&hit_data, true);
-            } else if !self.now.click && self.before.click {
+                overlay.backend.on_pointer(session, &hit_data, true);
+            } else if !self.now.pressed && self.before.pressed {
                 if let Some(clicked_idx) = self.clicked_idx.take() {
                     let clicked = &mut interactables[clicked_idx];
-                    clicked.backend.on_pointer(&hit_data, false);
+                    clicked.backend.on_pointer(session, &hit_data, false);
                 } else {
-                    overlay.backend.on_pointer(&hit_data, false);
+                    overlay.backend.on_pointer(session, &hit_data, false);
                 }
             }
         } else {
@@ -339,10 +357,11 @@ impl PointerData {
                 self.hovered_idx = None;
             }
 
-            if !self.now.click && self.before.click {
+            if !self.now.pressed && self.before.pressed {
                 if let Some(clicked_idx) = self.clicked_idx.take() {
                     let clicked = &mut interactables[clicked_idx];
                     clicked.backend.on_pointer(
+                        session,
                         &PointerHit {
                             hand: self.hand,
                             mode: self.mode,
@@ -371,8 +390,8 @@ struct RayHit {
 impl Default for PointerState {
     fn default() -> Self {
         Self {
-            click: false,
-            grab: false,
+            pressed: false,
+            grabbing: false,
             show_hide: false,
             scroll: 0.,
         }
@@ -384,6 +403,12 @@ pub struct DummyInteractionHandler;
 impl InteractionHandler for DummyInteractionHandler {
     fn on_left(&mut self, _hand: usize) {}
     fn on_hover(&mut self, _hit: &crate::interactions::PointerHit) {}
-    fn on_pointer(&mut self, _hit: &crate::interactions::PointerHit, _pressed: bool) {}
+    fn on_pointer(
+        &mut self,
+        _session: &AppSession,
+        _hit: &crate::interactions::PointerHit,
+        _pressed: bool,
+    ) {
+    }
     fn on_scroll(&mut self, _hit: &crate::interactions::PointerHit, _delta: f32) {}
 }

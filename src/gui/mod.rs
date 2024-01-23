@@ -6,7 +6,7 @@ use stereokit::{SkDraw, StereoKitMultiThread, Tex, TextureFormat, TextureType};
 use crate::{
     interactions::InteractionHandler,
     overlay::{OverlayBackend, OverlayRenderer, COLOR_TRANSPARENT},
-    AppState,
+    AppSession, AppState,
 };
 
 pub mod font;
@@ -232,7 +232,12 @@ impl<T1, T2> InteractionHandler for Canvas<T1, T2> {
             self.hover_controls[hit.hand] = None;
         }
     }
-    fn on_pointer(&mut self, hit: &crate::interactions::PointerHit, pressed: bool) {
+    fn on_pointer(
+        &mut self,
+        _session: &AppSession,
+        hit: &crate::interactions::PointerHit,
+        pressed: bool,
+    ) {
         let idx = if pressed {
             self.interactive_get_idx(hit.uv)
         } else {
