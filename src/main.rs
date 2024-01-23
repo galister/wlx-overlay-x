@@ -1,5 +1,9 @@
 #![allow(dead_code)]
-use std::{collections::VecDeque, fs::create_dir, path::Path, sync::{Mutex, Arc}};
+use std::{
+    collections::VecDeque,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use desktop::{try_create_screen, wl_client::WlClientState};
 use gl::{egl::gl_init, GlRenderer, PANEL_SHADER_BYTES};
@@ -8,13 +12,13 @@ use gui::font::FontCache;
 use input::INPUT;
 use interactions::InputState;
 use keyboard::create_keyboard;
-use log::error;
 use once_cell::sync::Lazy;
 use overlay::OverlayData;
 use stereokit::*;
 use tokio::runtime::{Builder, Runtime};
 use watch::{create_watch, WATCH_DEFAULT_POS, WATCH_DEFAULT_ROT};
 
+mod config;
 mod desktop;
 mod gl;
 mod gui;
@@ -28,7 +32,7 @@ pub type Task = Box<dyn FnOnce(&SkDraw, &mut AppState, &mut [OverlayData]) + Sen
 pub static TASKS: Lazy<Mutex<VecDeque<Task>>> = Lazy::new(|| Mutex::new(VecDeque::new()));
 
 pub struct AppSession {
-    pub config_path: String,
+    pub config_root_path: PathBuf,
 
     pub show_screens: Vec<String>,
     pub show_keyboard: bool,
@@ -56,22 +60,11 @@ pub struct AppSession {
 
 impl AppSession {
     pub fn load() -> AppSession {
-        let config_path: String;
-
-        if let Ok(home) = std::env::var("HOME") {
-            config_path = Path::new(&home)
-                .join(".config/wlxroverlay")
-                .to_str()
-                .unwrap()
-                .to_string();
-        } else {
-            config_path = "/tmp/wlxroverlay".to_string();
-            error!("Err: $HOME is not set, using {}", config_path);
-        }
-        let _ = create_dir(&config_path);
+        let config_root_path = config::ensure_config_root();
+        println!("Config root path: {}", config_root_path.to_string_lossy());
 
         AppSession {
-            config_path,
+            config_root_path,
             show_screens: vec!["DP-3".to_string()],
             keyboard_volume: 0.5,
             show_keyboard: false,

@@ -1,10 +1,11 @@
 use std::{
+    f32::consts::PI,
     fs::read_to_string,
     path::Path,
-    time::{Duration, Instant}, f32::consts::PI,
+    time::{Duration, Instant},
 };
 
-use glam::{Affine2, Vec2, vec2, Quat, Vec3};
+use glam::{vec2, Affine2, Quat, Vec2, Vec3};
 use log::{info, warn};
 use wayland_client::protocol::wl_output::Transform;
 
@@ -33,17 +34,23 @@ struct ScreenInteractionHandler {
 
 impl ScreenInteractionHandler {
     fn new(pos: Vec2, size: Vec2, transform: Transform) -> ScreenInteractionHandler {
-
-
         let transform = match transform {
-            Transform::_90 | Transform::Flipped90 =>
-                Affine2::from_cols(vec2(0., size.y), vec2(-size.x, 0.), vec2(pos.x + size.x, pos.y)),
-            Transform::_180 | Transform::Flipped180 => 
-                Affine2::from_cols(vec2(-size.x, 0.), vec2(0., -size.y), vec2(pos.x + size.x, pos.y + size.y)),
-            Transform::_270 | Transform::Flipped270 => 
-                Affine2::from_cols(vec2(0., -size.y), vec2(size.x, 0.), vec2(pos.x, pos.y + size.y)),
-            _ => 
-                Affine2::from_cols(vec2(size.x, 0.), vec2(0., size.y), pos),
+            Transform::_90 | Transform::Flipped90 => Affine2::from_cols(
+                vec2(0., size.y),
+                vec2(-size.x, 0.),
+                vec2(pos.x + size.x, pos.y),
+            ),
+            Transform::_180 | Transform::Flipped180 => Affine2::from_cols(
+                vec2(-size.x, 0.),
+                vec2(0., -size.y),
+                vec2(pos.x + size.x, pos.y + size.y),
+            ),
+            Transform::_270 | Transform::Flipped270 => Affine2::from_cols(
+                vec2(0., -size.y),
+                vec2(size.x, 0.),
+                vec2(pos.x, pos.y + size.y),
+            ),
+            _ => Affine2::from_cols(vec2(size.x, 0.), vec2(0., size.y), pos),
         };
 
         ScreenInteractionHandler {
@@ -103,11 +110,7 @@ pub async fn try_create_screen(
     let output = &wl.outputs[idx];
     info!(
         "{}: Res {}x{} Size {:?} Pos {:?}",
-        output.name,
-        output.size.0,
-        output.size.1,
-        output.logical_size,
-        output.logical_pos,
+        output.name, output.size.0, output.size.1, output.logical_size, output.logical_pos,
     );
 
     let size = (output.size.0, output.size.1);
@@ -120,7 +123,7 @@ pub async fn try_create_screen(
     } else {
         info!("{}: Using Pipewire capture", &output.name);
         let file_name = format!("{}.token", &output.name);
-        let full_path = Path::new(&session.config_path).join(file_name);
+        let full_path = Path::new(&session.config_root_path).join(file_name);
         let token = read_to_string(full_path).ok();
 
         if let Ok(node_id) = pipewire_select_screen(token.as_deref()).await {
