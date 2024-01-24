@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    config,
+    config_io,
     gui::{color_parse, Canvas, Control},
     input::INPUT,
     overlay::OverlayData,
@@ -274,7 +274,7 @@ pub struct Layout {
 
 impl Layout {
     fn load_from_disk() -> Layout {
-        let mut layout = config::load_keyboard();
+        let mut layout = config_io::load_keyboard();
         layout.post_load();
         layout
     }

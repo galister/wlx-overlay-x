@@ -18,7 +18,7 @@ use stereokit::*;
 use tokio::runtime::{Builder, Runtime};
 use watch::{create_watch, WATCH_DEFAULT_POS, WATCH_DEFAULT_ROT};
 
-mod config;
+mod config_io;
 mod desktop;
 mod gl;
 mod gui;
@@ -60,7 +60,7 @@ pub struct AppSession {
 
 impl AppSession {
     pub fn load() -> AppSession {
-        let config_root_path = config::ensure_config_root();
+        let config_root_path = config_io::ensure_config_root();
         println!("Config root path: {}", config_root_path.to_string_lossy());
 
         AppSession {
