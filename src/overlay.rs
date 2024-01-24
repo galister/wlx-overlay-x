@@ -109,19 +109,10 @@ impl OverlayData {
             let norm = vec3(0., 0., -1.);
             let col = color32::new_rgb(255, 255, 255);
 
-            let mut x0 = 0f32;
-            let mut x1 = 1f32;
-            let mut y0 = 0f32;
-            let mut y1 = 1f32;
-
-            if app.session.screen_flip_h {
-                x0 = 1.;
-                x1 = 0.;
-            }
-            if app.session.screen_flip_v {
-                y0 = 1.;
-                y1 = 0.;
-            }
+            let x0 = 0f32;
+            let x1 = 1f32;
+            let y0 = 0f32;
+            let y1 = 1f32;
 
             #[rustfmt::skip]
             let verts = vec![

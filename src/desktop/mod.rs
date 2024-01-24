@@ -79,8 +79,8 @@ impl InteractionHandler for ScreenInteractionHandler {
             };
 
             if pressed {
-                self.next_move =
-                    Instant::now() + Duration::from_millis(session.click_freeze_time_ms);
+                self.next_move = Instant::now()
+                    + Duration::from_millis(session.config.click_freeze_time_ms as u64);
             }
 
             input.send_button(btn, pressed);
@@ -159,6 +159,7 @@ pub async fn try_create_screen(
         Some(OverlayData {
             name: output.name.clone(),
             size,
+            width: 1.0 * session.config.desktop_view_scale,
             show_hide: true,
             grabbable: true,
             backend,
