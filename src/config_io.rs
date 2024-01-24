@@ -21,10 +21,19 @@ pub static CONFIG_ROOT_PATH: Lazy<PathBuf> = Lazy::new(|| {
     PathBuf::from(FALLBACK_CONFIG_PATH)
 });
 
-// Make sure config directory is present and return config path
+pub fn get_conf_d_path() -> PathBuf {
+    let mut config_root = CONFIG_ROOT_PATH.clone();
+    config_root.push("conf.d");
+    config_root
+}
+
+// Make sure config directory is present and return root config path
 pub fn ensure_config_root() -> PathBuf {
     let path = CONFIG_ROOT_PATH.clone();
     let _ = create_dir(&path);
+
+    let path_conf_d = get_conf_d_path();
+    let _ = create_dir(path_conf_d);
     path
 }
 

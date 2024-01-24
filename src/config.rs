@@ -1,6 +1,8 @@
 use crate::config_io;
+use crate::config_io::get_conf_d_path;
 use crate::keyboard;
 use crate::load_with_fallback;
+use log::error;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -73,7 +75,6 @@ impl GeneralConfig {
         }
     }
 
-    // TODO: config.d/ directory support
     fn load_from_disk() -> GeneralConfig {
         let config = load_general();
         config.post_load();
@@ -96,6 +97,30 @@ pub fn load_keyboard() -> keyboard::Layout {
 }
 
 pub fn load_general() -> GeneralConfig {
-    let yaml_data = load_with_fallback!("config.yaml", "res/config.yaml");
+    let mut yaml_data = load_with_fallback!("config.yaml", "res/config.yaml");
+
+    // Add files from conf.d directory
+    let path_conf_d = get_conf_d_path();
+    if let Ok(paths_unsorted) = std::fs::read_dir(path_conf_d) {
+        // Sort paths alphabetically
+        let mut paths: Vec<_> = paths_unsorted.map(|r| r.unwrap()).collect();
+        paths.sort_by_key(|dir| dir.path());
+        for path in paths {
+            if !path.file_type().unwrap().is_file() {
+                continue;
+            }
+
+            println!("Loading config file {}", path.path().to_string_lossy());
+
+            if let Ok(data) = std::fs::read_to_string(path.path()) {
+                yaml_data.push('\n'); // Just in case, if end of the config file was not newline
+                yaml_data.push_str(data.as_str());
+            } else {
+                // Shouldn't happen anyways
+                error!("Failed to load {}", path.path().to_string_lossy());
+            }
+        }
+    }
+
     serde_yaml::from_str(&yaml_data).expect("Failed to parse config.yaml")
 }
