@@ -5,13 +5,13 @@ use std::{
     path::PathBuf,
 };
 
-const FALLBACK_CONFIG_PATH: &str = "/tmp/wlxroverlay";
+const FALLBACK_CONFIG_PATH: &str = "/tmp/wlxoverlay";
 
 pub static CONFIG_ROOT_PATH: Lazy<PathBuf> = Lazy::new(|| {
     if let Ok(xdg_dirs) = xdg::BaseDirectories::new() {
-        if let Some(dir) = xdg_dirs.get_config_dirs().first() {
-            return dir.clone().join("wlxoverlay");
-        }
+        let mut dir = xdg_dirs.get_config_home();
+        dir.push("wlxoverlay");
+        return dir;
     }
     //Return fallback config path
     error!(

@@ -159,7 +159,7 @@ pub async fn try_create_screen(
         Some(OverlayData {
             name: output.name.clone(),
             size,
-            width: 1.0 * session.config.desktop_view_scale,
+            scale: session.config.desktop_view_scale,
             show_hide: true,
             grabbable: true,
             backend,

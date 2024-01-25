@@ -34,6 +34,7 @@ pub const COLOR_TRANSPARENT: Color128 = Color128 {
 pub struct OverlayData {
     pub name: Arc<str>,
     pub width: f32,
+    pub scale: f32,
     pub size: (i32, i32),
     pub visible: bool,
     pub want_visible: bool,
@@ -174,11 +175,7 @@ impl OverlayData {
     }
 
     pub fn on_size(&mut self, delta: f32) {
-        let t = self.transform.matrix3.mul_scalar(1. - delta.powi(3) * 0.05);
-        let len_sq = t.x_axis.length_squared();
-        if len_sq > 0.12 && len_sq < 100. {
-            self.transform.matrix3 = t;
-        }
+        self.scale = (self.scale * (1.0 - delta.powi(3) * 0.05)).clamp(0.1, 12.0);
     }
 
     pub fn on_move(&mut self, pos: Vec3A, hmd: &Affine3A) {
@@ -221,8 +218,6 @@ impl OverlayData {
             }
         }
 
-        let scale = self.transform.x_axis.length();
-
         let col_z = (self.transform.translation - hmd.translation).normalize();
         let col_y = up_dir;
         let col_x = col_y.cross(col_z);
@@ -230,7 +225,7 @@ impl OverlayData {
         let col_x = col_x.normalize();
 
         let rot = Mat3A::from_quat(self.spawn_rotation);
-        self.transform.matrix3 = Mat3A::from_cols(col_x, col_y, col_z).mul_scalar(scale) * rot;
+        self.transform.matrix3 = Mat3A::from_cols(col_x, col_y, col_z).mul_scalar(self.scale) * rot;
     }
 }
 
@@ -290,6 +285,7 @@ impl Default for OverlayData {
         OverlayData {
             name: Arc::from(""),
             width: 1.,
+            scale: 1.,
             size: (0, 0),
             visible: false,
             want_visible: false,

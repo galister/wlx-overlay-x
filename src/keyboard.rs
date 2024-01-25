@@ -101,7 +101,8 @@ pub fn create_keyboard(session: &AppSession) -> OverlayData {
     OverlayData {
         name: Arc::from("Kbd"),
         show_hide: true,
-        width: LAYOUT.row_size * 0.05 * session.config.keyboard_scale,
+        width: LAYOUT.row_size * 0.05,
+        scale: session.config.keyboard_scale,
         size: (canvas.width as _, canvas.height as _),
         grabbable: true,
         spawn_point: vec3(0., -0.5, -1.),

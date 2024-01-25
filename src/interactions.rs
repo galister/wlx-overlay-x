@@ -205,7 +205,7 @@ impl PointerData {
                         if self.next_push < Instant::now() {
                             debug!("Pointer {}: Resize {}", self.hand, grabbed.name);
                             grabbed.on_size(self.now.scroll);
-                            self.next_push = Instant::now() + Duration::from_millis(33);
+                            self.next_push = Instant::now() + Duration::from_millis(20);
                         }
                     } else if self.next_push < Instant::now() {
                         debug!("Pointer {}: Push/pull {}", self.hand, grabbed.name);
@@ -215,7 +215,7 @@ impl PointerData {
                         if len_sq > 0.20 && len_sq < 100. {
                             self.grabbed_offset.0 = offset;
                         }
-                        self.next_push = Instant::now() + Duration::from_millis(33);
+                        self.next_push = Instant::now() + Duration::from_millis(20);
                     }
                 }
                 sk.hierarchy_push(self.pose3a);
