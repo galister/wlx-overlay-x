@@ -36,7 +36,7 @@ pub fn create_keyboard(session: &AppSession) -> OverlayData {
         modifiers: 0,
         processes: vec![],
         audio_stream: None,
-        first_try: false,
+        first_try: true,
         audio_handle: None,
     };
 
@@ -211,8 +211,8 @@ impl KeyboardData {
             return;
         }
 
-        if self.audio_stream.is_none() && !self.first_try {
-            self.first_try = true;
+        if self.audio_stream.is_none() && self.first_try {
+            self.first_try = false;
             if let Ok((stream, handle)) = OutputStream::try_default() {
                 self.audio_stream = Some(stream);
                 self.audio_handle = Some(handle);
