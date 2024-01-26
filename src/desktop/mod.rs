@@ -1,15 +1,18 @@
 use std::{
+    collections::BTreeMap,
+    error::Error,
     f32::consts::PI,
-    fs::read_to_string,
-    path::Path,
+    path::PathBuf,
     time::{Duration, Instant},
 };
 
 use glam::{vec2, Affine2, Quat, Vec2, Vec3};
 use log::{info, warn};
+use serde::{Deserialize, Serialize};
 use wayland_client::protocol::wl_output::Transform;
 
 use crate::{
+    config_io,
     desktop::capture::{
         pw_capture::{pipewire_select_screen, PipewireCapture},
         wlr_dmabuf_capture::WlrDmabufCapture,
@@ -112,8 +115,50 @@ impl InteractionHandler for ScreenInteractionHandler {
     fn on_left(&mut self, _hand: usize) {}
 }
 
+pub fn def_pw_tokens() -> Vec<(String, String)> {
+    Vec::new()
+}
+
+#[derive(Deserialize, Serialize, Default)]
+pub struct TokenConf {
+    #[serde(default = "def_pw_tokens")]
+    pub pw_tokens: Vec<(String, String)>,
+}
+
+fn get_pw_token_path() -> PathBuf {
+    let mut path = config_io::get_conf_d_path();
+    path.push("pw_tokens.yaml");
+    path
+}
+
+pub fn save_pw_token_config(tokens: &BTreeMap<String, String>) -> Result<(), Box<dyn Error>> {
+    let mut conf = TokenConf::default();
+
+    for (name, token) in tokens {
+        conf.pw_tokens.push((name.clone(), token.clone()));
+    }
+
+    let yaml = serde_yaml::to_string(&conf)?;
+    std::fs::write(get_pw_token_path(), yaml)?;
+
+    Ok(())
+}
+
+pub fn load_pw_token_config() -> Result<BTreeMap<String, String>, Box<dyn Error>> {
+    let mut map: BTreeMap<String, String> = BTreeMap::new();
+
+    let yaml = std::fs::read_to_string(get_pw_token_path())?;
+    let conf: TokenConf = serde_yaml::from_str(yaml.as_str())?;
+
+    for (name, token) in conf.pw_tokens {
+        map.insert(name, token);
+    }
+
+    Ok(map)
+}
+
 pub async fn try_create_screen(
-    wl: &WlClientState,
+    wl: &mut WlClientState,
     idx: usize,
     session: &AppSession,
 ) -> Option<OverlayData> {
@@ -132,11 +177,8 @@ pub async fn try_create_screen(
         capture = WlrDmabufCapture::try_new(wl, output);
     } else {
         info!("{}: Using Pipewire capture", &output.name);
-        let file_name = format!("{}.token", &output.name);
-        let full_path = Path::new(&session.config_root_path).join(file_name);
-        let token = read_to_string(full_path).ok();
 
-        if let Ok(node_id) = pipewire_select_screen(token.as_deref()).await {
+        if let Ok(node_id) = pipewire_select_screen(output.name.as_ref(), &mut wl.pw_tokens).await {
             info!("Node id: {}", node_id);
             capture = Some(Box::new(PipewireCapture::new(
                 output.name.clone(),
