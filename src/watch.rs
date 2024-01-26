@@ -1,4 +1,4 @@
-use std::{time::Instant, sync::Arc};
+use std::{sync::Arc, time::Instant};
 
 use chrono::Local;
 use glam::{Quat, Vec3};
@@ -50,12 +50,12 @@ pub fn create_watch(session: &AppSession, screens: Vec<(usize, Arc<str>)>) -> Ov
     canvas.fg_color = color_parse("#353535");
 
     let vol_up = canvas.button(327., 116., 46., 32., "+".into());
-    canvas.controls[vol_up].on_press = Some(|_control, _data| {
+    canvas.controls[vol_up].on_press = Some(|_control, _session, _data| {
         println!("Volume up!"); //TODO
     });
 
     let vol_dn = canvas.button(327., 52., 46., 32., "-".into());
-    canvas.controls[vol_dn].on_press = Some(|_control, _data| {
+    canvas.controls[vol_dn].on_press = Some(|_control, _session, _data| {
         println!("Volume down!"); //TODO
     });
 
@@ -63,7 +63,7 @@ pub fn create_watch(session: &AppSession, screens: Vec<(usize, Arc<str>)>) -> Ov
     canvas.fg_color = color_parse("#353535");
 
     let settings = canvas.button(2., 162., 36., 36., "☰".into());
-    canvas.controls[settings].on_press = Some(|_control, _data| {
+    canvas.controls[settings].on_press = Some(|_control, _session, _data| {
         println!("Settings!"); //TODO
     });
 
@@ -81,7 +81,7 @@ pub fn create_watch(session: &AppSession, screens: Vec<(usize, Arc<str>)>) -> Ov
         scr_idx: 0,
     });
 
-    keyboard.on_press = Some(|control, _data| {
+    keyboard.on_press = Some(|control, _session, _data| {
         if let Some(state) = control.state.as_mut() {
             state.pressed_at = Instant::now();
         }
@@ -126,7 +126,7 @@ pub fn create_watch(session: &AppSession, screens: Vec<(usize, Arc<str>)>) -> Ov
             scr_idx,
         });
 
-        button.on_press = Some(|control, _data| {
+        button.on_press = Some(|control, _session, _data| {
             if let Some(state) = control.state.as_mut() {
                 state.pressed_at = Instant::now();
             }
@@ -159,7 +159,7 @@ pub fn create_watch(session: &AppSession, screens: Vec<(usize, Arc<str>)>) -> Ov
     OverlayData {
         name: "Watch".into(),
         size: (400, 200),
-        width: 0.065,
+        width: 0.065 * session.config.watch_scale,
         backend: Box::new(canvas),
         want_visible: true,
         relative_to,

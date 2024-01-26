@@ -234,7 +234,7 @@ impl<T1, T2> InteractionHandler for Canvas<T1, T2> {
     }
     fn on_pointer(
         &mut self,
-        _session: &AppSession,
+        session: &AppSession,
         hit: &crate::interactions::PointerHit,
         pressed: bool,
     ) {
@@ -249,7 +249,7 @@ impl<T1, T2> InteractionHandler for Canvas<T1, T2> {
             if pressed {
                 if let Some(ref mut f) = c.on_press {
                     self.pressed_controls[hit.hand] = Some(idx);
-                    f(c, &mut self.data);
+                    f(c, &session, &mut self.data);
                 }
             } else if let Some(ref mut f) = c.on_release {
                 self.pressed_controls[hit.hand] = None;
@@ -344,7 +344,7 @@ pub struct Control<T1, T2> {
     dirty: bool,
 
     pub on_update: Option<fn(&mut Self, &mut T1)>,
-    pub on_press: Option<fn(&mut Self, &mut T1)>,
+    pub on_press: Option<fn(&mut Self, session: &AppSession, &mut T1)>,
     pub on_release: Option<fn(&mut Self, &mut T1)>,
     pub test_highlight: Option<fn(&mut Self, &mut T1) -> bool>,
 

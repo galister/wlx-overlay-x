@@ -81,7 +81,7 @@ impl InputState {
         let hmd_pose = sk.input_head();
         self.hmd = Affine3A::from_rotation_translation(hmd_pose.orientation, hmd_pose.position);
         for h in 0..2 {
-            self.pointers[h].update(&hmd_pose, sk);
+            self.pointers[h].update(session, &hmd_pose, sk);
         }
 
         for overlay in interactables.iter_mut() {
@@ -135,23 +135,24 @@ impl PointerData {
         }
     }
 
-    fn update(&mut self, hmd: &Pose, sk: &SkDraw) {
-        let con = sk.input_controller(HANDS[self.hand]);
-        self.pose = con.aim;
+    fn update(&mut self, session: &AppSession, hmd: &Pose, sk: &SkDraw) {
+        let controller = sk.input_controller(HANDS[self.hand]);
+
+        self.pose = controller.aim;
         self.pose3a =
             Affine3A::from_rotation_translation(self.pose.orientation, self.pose.position);
 
         self.before = self.now;
         self.now.pressed = if self.before.pressed {
-            con.trigger > 0.5
+            controller.trigger >= (session.config.trigger_threshold - 0.1).max(0.0)
         } else {
-            con.trigger > 0.6
+            controller.trigger >= session.config.trigger_threshold
         };
 
         self.now.grabbing = if self.before.grabbing {
-            con.grip > 0.5
+            controller.grip >= (session.config.grab_threshold - 0.05).max(0.0)
         } else {
-            con.grip > 0.6
+            controller.grip >= session.config.grab_threshold
         };
 
         self.now.show_hide = if self.hand == 0 {
@@ -159,7 +160,7 @@ impl PointerData {
         } else {
             false
         };
-        self.now.scroll = con.stick.y;
+        self.now.scroll = controller.stick.y;
 
         // If unpressed (true -> false)
         if self.before.pressed && !self.now.pressed {
@@ -168,8 +169,8 @@ impl PointerData {
             }
         }
 
-        let from_hmd = con.palm.position - hmd.position;
-        let dot = from_hmd.dot(con.palm.forward());
+        let from_hmd = controller.palm.position - hmd.position;
+        let dot = from_hmd.dot(controller.palm.forward());
         self.mode = if dot > 0.2 {
             POINTER_NORM // neutral
         } else {
@@ -204,7 +205,7 @@ impl PointerData {
                         if self.next_push < Instant::now() {
                             debug!("Pointer {}: Resize {}", self.hand, grabbed.name);
                             grabbed.on_size(self.now.scroll);
-                            self.next_push = Instant::now() + Duration::from_millis(33);
+                            self.next_push = Instant::now() + Duration::from_millis(20);
                         }
                     } else if self.next_push < Instant::now() {
                         debug!("Pointer {}: Push/pull {}", self.hand, grabbed.name);
@@ -214,7 +215,7 @@ impl PointerData {
                         if len_sq > 0.20 && len_sq < 100. {
                             self.grabbed_offset.0 = offset;
                         }
-                        self.next_push = Instant::now() + Duration::from_millis(33);
+                        self.next_push = Instant::now() + Duration::from_millis(20);
                     }
                 }
                 sk.hierarchy_push(self.pose3a);

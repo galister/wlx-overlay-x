@@ -5,6 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use config::GeneralConfig;
 use desktop::{try_create_screen, wl_client::WlClientState};
 use gl::{egl::gl_init, GlRenderer, PANEL_SHADER_BYTES};
 use glam::{Quat, Vec3};
@@ -19,6 +20,7 @@ use tokio::runtime::{Builder, Runtime};
 use watch::{create_watch, WATCH_DEFAULT_POS, WATCH_DEFAULT_ROT};
 
 mod config;
+mod config_io;
 mod desktop;
 mod gl;
 mod gui;
@@ -33,14 +35,10 @@ pub static TASKS: Lazy<Mutex<VecDeque<Task>>> = Lazy::new(|| Mutex::new(VecDeque
 
 pub struct AppSession {
     pub config_root_path: PathBuf,
+    pub config: GeneralConfig,
 
     pub show_screens: Vec<String>,
     pub show_keyboard: bool,
-    pub keyboard_volume: f32,
-
-    pub screen_flip_h: bool,
-    pub screen_flip_v: bool,
-    pub screen_invert_color: bool,
 
     pub watch_hand: usize,
     pub watch_pos: Vec3,
@@ -54,23 +52,18 @@ pub struct AppSession {
     pub color_shift: Color32,
     pub color_alt: Color32,
     pub color_grab: Color32,
-
-    pub click_freeze_time_ms: u64,
 }
 
 impl AppSession {
     pub fn load() -> AppSession {
-        let config_root_path = config::ensure_config_root();
+        let config_root_path = config_io::ensure_config_root();
         println!("Config root path: {}", config_root_path.to_string_lossy());
-
+        let config = config::load_general();
         AppSession {
             config_root_path,
+            config,
             show_screens: vec!["DP-3".to_string()],
-            keyboard_volume: 0.5,
             show_keyboard: false,
-            screen_flip_h: false,
-            screen_flip_v: false,
-            screen_invert_color: false,
             capture_method: "auto".to_string(),
             primary_hand: 1,
             watch_hand: 1,
@@ -100,7 +93,6 @@ impl AppSession {
                 b: 0,
                 a: 255,
             },
-            click_freeze_time_ms: 300,
         }
     }
 }
@@ -165,7 +157,7 @@ fn main() {
 
     overlays.push(OverlayData::default()); // placeholder for watch
 
-    let mut keyboard = create_keyboard();
+    let mut keyboard = create_keyboard(&session);
     keyboard.want_visible = true;
     overlays.push(keyboard);
 

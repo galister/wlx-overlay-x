@@ -189,7 +189,7 @@ impl GlShader {
             glShaderSource(
                 shader,
                 1,
-                &src.as_ptr() as *const *const u8 as *const *const _,
+                &src.as_ptr() as *const *const u8,
                 &(src.len() as i32) as *const _,
             );
             debug_assert_eq!(glGetError(), GL_NO_ERROR);
@@ -312,10 +312,10 @@ impl GlBuffer {
         }
     }
 
-    pub fn data<T>(&self, data: &Vec<T>) {
+    pub fn data<T>(&self, data: &[T]) {
         self.bind();
         unsafe {
-            let size = data.len() * size_of::<T>();
+            let size = std::mem::size_of_val(data);
             glBufferData(
                 self.buffer_type,
                 size as _,

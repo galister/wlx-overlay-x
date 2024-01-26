@@ -79,8 +79,8 @@ impl InteractionHandler for ScreenInteractionHandler {
             };
 
             if pressed {
-                self.next_move =
-                    Instant::now() + Duration::from_millis(session.click_freeze_time_ms);
+                self.next_move = Instant::now()
+                    + Duration::from_millis(session.config.click_freeze_time_ms as u64);
             }
 
             input.send_button(btn, pressed);
@@ -89,17 +89,26 @@ impl InteractionHandler for ScreenInteractionHandler {
             input.mouse_move(pos);
         }
     }
+
     fn on_scroll(&mut self, _hit: &PointerHit, delta: f32) {
+        assert!(delta.abs() <= 1.0); // Joysticks cannot exceed -1.0, 1.0 range
+
         if let Ok(input) = INPUT.lock() {
-            let millis = (1. - delta.abs()) * delta;
-            if let Some(next_scroll) =
-                Instant::now().checked_add(Duration::from_millis(millis as _))
-            {
-                self.next_scroll = next_scroll;
+            let delta_abs = delta.abs();
+
+            // x=50+300(y^{2}-2y+1), where x=milliseconds; y=delta (0.0-1.0)
+            let millis = (40.0 + 300.0 * (delta_abs * delta_abs - 2.0 * delta_abs + 1.0)) as u32;
+
+            let cur_time = Instant::now();
+            let elapsed_ms = (cur_time - self.next_scroll).as_millis() as u32;
+
+            if elapsed_ms >= millis {
+                self.next_scroll = cur_time;
+                input.wheel(if delta < 0. { -1 } else { 1 })
             }
-            input.wheel(if delta < 0. { -1 } else { 1 })
         }
     }
+
     fn on_left(&mut self, _hand: usize) {}
 }
 
@@ -159,6 +168,7 @@ pub async fn try_create_screen(
         Some(OverlayData {
             name: output.name.clone(),
             size,
+            scale: session.config.desktop_view_scale,
             show_hide: true,
             grabbable: true,
             backend,

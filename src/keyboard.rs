@@ -11,6 +11,7 @@ use crate::{
     gui::{color_parse, Canvas, Control},
     input::INPUT,
     overlay::OverlayData,
+    AppSession,
 };
 use glam::{vec2, vec3};
 use idmap::{idmap, IdMap};
@@ -25,7 +26,7 @@ use strum::{EnumIter, EnumString};
 const PIXELS_PER_UNIT: f32 = 80.;
 const BUTTON_PADDING: f32 = 4.;
 
-pub fn create_keyboard() -> OverlayData {
+pub fn create_keyboard(session: &AppSession) -> OverlayData {
     let size = vec2(
         LAYOUT.row_size * PIXELS_PER_UNIT,
         (LAYOUT.main_layout.len() as f32) * PIXELS_PER_UNIT,
@@ -101,6 +102,7 @@ pub fn create_keyboard() -> OverlayData {
         name: Arc::from("Kbd"),
         show_hide: true,
         width: LAYOUT.row_size * 0.05,
+        scale: session.config.keyboard_scale,
         size: (canvas.width as _, canvas.height as _),
         grabbable: true,
         spawn_point: vec3(0., -0.5, -1.),
@@ -109,11 +111,15 @@ pub fn create_keyboard() -> OverlayData {
     }
 }
 
-fn key_press(control: &mut Control<KeyboardData, KeyButtonData>, data: &mut KeyboardData) {
+fn key_press(
+    control: &mut Control<KeyboardData, KeyButtonData>,
+    session: &AppSession,
+    data: &mut KeyboardData,
+) {
     match control.state.as_mut() {
         Some(KeyButtonData::Key { vk, pressed }) => {
             if let Ok(input) = INPUT.lock() {
-                data.key_click();
+                data.key_click(session);
                 input.send_key(*vk as _, true);
                 *pressed = true;
             }
@@ -126,14 +132,14 @@ fn key_press(control: &mut Control<KeyboardData, KeyButtonData>, data: &mut Keyb
             *sticky = data.modifiers & *modifier == 0;
             data.modifiers |= *modifier;
             if let Ok(mut input) = INPUT.lock() {
-                data.key_click();
+                data.key_click(session);
                 input.set_modifiers(data.modifiers);
                 *pressed = true;
             }
         }
         Some(KeyButtonData::Macro { verbs }) => {
             if let Ok(input) = INPUT.lock() {
-                data.key_click();
+                data.key_click(session);
                 for (vk, press) in verbs {
                     input.send_key(*vk as _, *press);
                 }
@@ -144,7 +150,7 @@ fn key_press(control: &mut Control<KeyboardData, KeyButtonData>, data: &mut Keyb
             data.processes
                 .retain_mut(|child| !matches!(child.try_wait(), Ok(Some(_))));
 
-            data.key_click();
+            data.key_click(session);
             if let Ok(child) = Command::new(program).args(args).spawn() {
                 data.processes.push(child);
             }
@@ -196,7 +202,10 @@ struct KeyboardData {
 }
 
 impl KeyboardData {
-    fn key_click(&mut self) {
+    fn key_click(&mut self, session: &AppSession) {
+        if !session.config.keyboard_sound_enabled {
+            return;
+        }
         let wav = include_bytes!("res/421581.wav");
         let cursor = Cursor::new(wav);
         let source = Decoder::new_wav(cursor).unwrap();
