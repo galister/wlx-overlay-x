@@ -19,7 +19,7 @@ use idmap_derive::IntegerId;
 use log::error;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use rodio::{Decoder, OutputStream, Source};
+use rodio::{Decoder, OutputStream, OutputStreamHandle, Source};
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, EnumString};
 
@@ -36,6 +36,8 @@ pub fn create_keyboard(session: &AppSession) -> OverlayData {
         modifiers: 0,
         processes: vec![],
         audio_stream: None,
+        first_try: false,
+        audio_handle: None,
     };
 
     let mut canvas = Canvas::new(size.x as _, size.y as _, data);
@@ -199,6 +201,8 @@ struct KeyboardData {
     modifiers: KeyModifier,
     processes: Vec<Child>,
     audio_stream: Option<OutputStream>,
+    audio_handle: Option<OutputStreamHandle>,
+    first_try: bool,
 }
 
 impl KeyboardData {
@@ -206,15 +210,22 @@ impl KeyboardData {
         if !session.config.keyboard_sound_enabled {
             return;
         }
-        let wav = include_bytes!("res/421581.wav");
-        let cursor = Cursor::new(wav);
-        let source = Decoder::new_wav(cursor).unwrap();
-        self.audio_stream = None;
-        if let Ok((stream, handle)) = OutputStream::try_default() {
+
+        if self.audio_stream.is_none() && !self.first_try {
+            self.first_try = true;
+            if let Ok((stream, handle)) = OutputStream::try_default() {
+                self.audio_stream = Some(stream);
+                self.audio_handle = Some(handle);
+            } else {
+                error!("Failed to open audio stream");
+            }
+        }
+
+        if let Some(handle) = &self.audio_handle {
+            let wav = include_bytes!("res/421581.wav");
+            let cursor = Cursor::new(wav);
+            let source = Decoder::new_wav(cursor).unwrap();
             let _ = handle.play_raw(source.convert_samples());
-            self.audio_stream = Some(stream);
-        } else {
-            error!("Failed to play key click");
         }
     }
 }
