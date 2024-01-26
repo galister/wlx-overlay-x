@@ -1,5 +1,6 @@
-use glam::{Vec2, vec2};
+use glam::{vec2, Vec2};
 use log::warn;
+use std::collections::BTreeMap;
 use std::os::fd::IntoRawFd;
 use std::sync::{Arc, Mutex};
 
@@ -19,7 +20,7 @@ use wayland_client::{
         wl_output::{self, Transform, WlOutput},
         wl_registry::WlRegistry,
     },
-    Connection, Dispatch, EventQueue, Proxy, QueueHandle, 
+    Connection, Dispatch, EventQueue, Proxy, QueueHandle,
 };
 
 use crate::desktop::frame::{FramePlane, FRAME_FAILED};
@@ -46,6 +47,7 @@ pub struct WlClientState {
     pub desktop_rect: (i32, i32),
     pub queue: Arc<Mutex<EventQueue<Self>>>,
     pub queue_handle: QueueHandle<Self>,
+    pub pw_tokens: BTreeMap<String /* display name */, String /* token */>,
 }
 
 impl WlClientState {
@@ -64,6 +66,7 @@ impl WlClientState {
             desktop_rect: (0, 0),
             queue: Arc::new(Mutex::new(queue)),
             queue_handle: qh.clone(),
+            pw_tokens: BTreeMap::new(),
         };
 
         for o in globals.contents().clone_list().iter() {
@@ -71,8 +74,8 @@ impl WlClientState {
                 let wl_output: WlOutput = globals.registry().bind(o.name, o.version, &qh, o.name);
 
                 state.xdg_output_mgr.get_xdg_output(&wl_output, &qh, o.name);
-                
-                let unknown : Arc<str> = "Unknown".into();
+
+                let unknown: Arc<str> = "Unknown".into();
 
                 let output = OutputState {
                     wl_output,
@@ -151,7 +154,6 @@ impl Dispatch<ZxdgOutputV1, u32> for WlClientState {
             }
             zxdg_output_v1::Event::Done => {
                 if let Some(output) = state.outputs.iter_mut().find(|o| o.id == *data) {
-
                     if output.logical_size.x < 0. {
                         output.logical_pos.x += output.logical_size.x;
                         output.logical_size.x *= -1.;

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::io::Cursor;
 use std::mem::MaybeUninit;
 use std::ptr::null_mut;
@@ -41,9 +42,22 @@ use stereokit::StereoKitMultiThread;
 
 static FORMATS: Lazy<Arc<Vec<DrmFormat>>> = Lazy::new(|| Arc::new(load_dmabuf_formats()));
 
-pub async fn pipewire_select_screen(token: Option<&str>) -> Result<u32, ashpd::Error> {
+pub async fn pipewire_select_screen(
+    display_name: &str,
+    token_store: &mut BTreeMap<String, String>,
+) -> Result<u32, ashpd::Error> {
     let proxy = Screencast::new().await?;
     let session = proxy.create_session().await?;
+
+    // Find existing token by display
+    let token = token_store.get(display_name).map(|s| s.as_str());
+
+    if let Some(t) = token {
+        println!(
+            "Found existing Pipewire token for display {}: {}",
+            display_name, t
+        );
+    }
 
     proxy
         .select_sources(
@@ -60,6 +74,15 @@ pub async fn pipewire_select_screen(token: Option<&str>) -> Result<u32, ashpd::E
         .start(&session, &WindowIdentifier::default())
         .await?
         .response()?;
+
+    if let Some(restore_token) = response.restore_token() {
+        if token_store
+            .insert(String::from(display_name), String::from(restore_token))
+            .is_none()
+        {
+            println!("Adding token {}", restore_token);
+        }
+    }
 
     if let Some(stream) = response.streams().first() {
         return Ok(stream.pipe_wire_node_id());

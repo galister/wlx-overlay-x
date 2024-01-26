@@ -6,13 +6,16 @@ use std::{
 };
 
 use config::GeneralConfig;
-use desktop::{try_create_screen, wl_client::WlClientState};
+use desktop::{
+    load_pw_token_config, save_pw_token_config, try_create_screen, wl_client::WlClientState,
+};
 use gl::{egl::gl_init, GlRenderer, PANEL_SHADER_BYTES};
 use glam::{Quat, Vec3};
 use gui::font::FontCache;
 use input::INPUT;
 use interactions::InputState;
 use keyboard::create_keyboard;
+use log::error;
 use once_cell::sync::Lazy;
 use overlay::OverlayData;
 use stereokit::*;
@@ -149,7 +152,7 @@ fn main() {
     let mut overlays: Vec<OverlayData> = vec![];
     let mut screens: Vec<(usize, Arc<str>)> = vec![];
 
-    let wl = WlClientState::new();
+    let mut wl = WlClientState::new();
 
     if let Ok(mut uinput) = INPUT.lock() {
         uinput.set_desktop_extent(wl.get_desktop_extent());
@@ -161,13 +164,26 @@ fn main() {
     keyboard.want_visible = true;
     overlays.push(keyboard);
 
+    if let Ok(pw_tokens) = load_pw_token_config() {
+        wl.pw_tokens = pw_tokens;
+    }
+
+    let pw_tokens_copy = wl.pw_tokens.clone();
+
     for i in 0..wl.outputs.len() {
-        let maybe_screen = rt.block_on(try_create_screen(&wl, i, &session));
+        let maybe_screen = rt.block_on(try_create_screen(&mut wl, i, &session));
         if let Some(mut screen) = maybe_screen {
             screen.want_visible = session.show_screens.iter().any(|s| s == &*screen.name);
 
             screens.push((overlays.len(), screen.name.clone()));
             overlays.push(screen);
+        }
+    }
+
+    if pw_tokens_copy != wl.pw_tokens {
+        // Token list changed, re-create token config file
+        if let Err(err) = save_pw_token_config(&wl.pw_tokens) {
+            error!("Failed to save Pipewire token config: {}", err);
         }
     }
 

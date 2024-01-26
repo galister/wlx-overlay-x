@@ -1,5 +1,6 @@
 use crate::config_io;
 use crate::config_io::get_conf_d_path;
+use crate::desktop::def_pw_tokens;
 use crate::keyboard;
 use crate::load_with_fallback;
 use log::error;
@@ -52,6 +53,9 @@ pub struct GeneralConfig {
 
     #[serde(default = "def_one")]
     pub watch_scale: f32,
+
+    #[serde(default = "def_pw_tokens")]
+    pub pw_tokens: Vec<(String, String)>,
 }
 
 impl GeneralConfig {
