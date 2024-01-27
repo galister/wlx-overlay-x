@@ -163,6 +163,7 @@ impl OverlayData {
         }
 
         if let Some(gfx) = self.gfx.as_mut() {
+            sk.tex_set_address(&gfx.tex, stereokit::TextureAddress::Clamp);
             self.backend.render(sk, &gfx.tex, app);
             sk.mesh_draw(
                 &gfx.mesh,
