@@ -190,6 +190,7 @@ impl PointerData {
         // Grabbing an overlay
         if let Some(grabbed_idx) = self.grabbed_idx {
             let grabbed = &mut interactables[grabbed_idx];
+
             if grabbed.primary_pointer != Some(self.hand) {
                 debug!("Pointer {}: Grab lost on {}", self.hand, grabbed.name);
                 self.grabbed_idx = None;
@@ -245,7 +246,7 @@ impl PointerData {
         let mut hits: [RayHit; 8] = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut num_hits = 0usize;
 
-        for (i, overlay) in interactables.iter_mut().enumerate() {
+        for (idx, overlay) in interactables.iter_mut().enumerate() {
             if !overlay.visible {
                 continue;
             }
@@ -258,13 +259,16 @@ impl PointerData {
                 );
 
                 if let Some((hit, _)) = sk.mesh_ray_intersect(&gfx.mesh, ray, CullMode::Back) {
+                    let ray_pos_worldspace = overlay.transform.transform_point3(ray.pos);
+                    let hit_pos_worldspace = overlay.transform.transform_point3(hit.pos);
+
                     let vec = overlay.interaction_transform.transform_point3(hit.pos);
                     hits[num_hits] = RayHit {
-                        idx: i,
+                        idx,
                         ray_pos: ray.pos,
                         hit_pos: hit.pos,
                         uv: vec2(vec.x, vec.y),
-                        dist: Vec3::length(hit.pos - ray.pos),
+                        dist: hit_pos_worldspace.distance(ray_pos_worldspace), /* Used to sort by distance in worldspace units */
                     };
                     num_hits += 1;
                     if num_hits > 7 {
@@ -278,7 +282,7 @@ impl PointerData {
 
         if let Some(hit) = hits[..num_hits]
             .iter()
-            .max_by(|a, b| a.dist.total_cmp(&b.dist))
+            .max_by(|a, b| b.dist.total_cmp(&a.dist))
         {
             let now_idx = hit.idx;
             let mut hit_data = PointerHit {
