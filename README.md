@@ -4,9 +4,12 @@ A lightweight OpenXR overlay for Wayland desktops, inspired by XSOverlay.
 
 This is a rewrite of [WlxOverlay](https://github.com/galister/WlxOverlay) (That one is for OpenVR).
 
-# Under Development
+# Superceded by WlxOverlay-S
 
-This project is in a highly experimental state. If you would like to give this a go, you might want to talk to me first.
+Please check out [WlxOverlay-S](https://github.com/galister/wlx-overlay-s), the next generation of this software, written using OpenXR, OpenVR and Vulkan in Rust. It provides the same functionality without the performance drawbacks of StereoKit and the NVidia compatibility issues of EGL.
+
+# Highly Experimental
+Feel free to reach out in case you run into issues.
 
 - Discord: https://discord.gg/gHwJ2vwSWV
 - Matrix Space: `#linux-vr-adventures:matrix.org`
